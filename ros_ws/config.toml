@@ -1,0 +1,21 @@
+[camera1]
+IS_ROTATE = true
+FOR_PC = true
+SN = "FGV22100004"
+ROI_width = 1024
+ROI_height = 768
+sensor_width = 1280
+sensor_height = 1024
+nBinning = 1
+FPS = 100.0
+
+[camera2]
+IS_ROTATE = true
+FOR_PC = true
+SN = "FGV22100004"
+ROI_width = 1024
+ROI_height = 768
+sensor_width = 1280
+sensor_height = 1024
+nBinning = 1
+FPS = 100.0

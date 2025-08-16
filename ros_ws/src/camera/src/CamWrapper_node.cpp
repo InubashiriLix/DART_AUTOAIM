@@ -3,6 +3,7 @@
 
 #include "CamWrapper.h"
 #include "CamWrapperDH.h"
+#include "config.hpp"
 #include "cv_bridge/cv_bridge.h"
 #include "rclcpp/rclcpp.hpp"
 #include "sensor_msgs/image_encodings.hpp"
@@ -13,17 +14,8 @@
 using namespace std;
 using namespace cv;
 
-// #define SHOW_CAM //此节点是否展示相机
-#define is_rotate  // 是否旋转相机
-
-#define ROI_width 1024
-#define ROI_height 768
-#define sensor_width 1280
-#define sensor_height 1024
-#define nBinning 1
-#define FPS 100.0
-
-bool FOR_PC = true;
+// WARNING: you need to provide abs path for config toml;
+auto config = toml_config();
 
 Camera *camera = nullptr;
 
@@ -36,11 +28,12 @@ std::string get_flag_option(const std::vector<std::string> &args, const std::str
 class CameraPublisher : public rclcpp::Node {
    public:
     CameraPublisher(int argc, char **argv) : Node("camera_publisher") {
-        if (FOR_PC) {
-            camera = new DHCamera("FGV22100004");
-            camera->init((sensor_width / nBinning - ROI_width) / 2,
-                         (sensor_height / nBinning - ROI_height) / 2, ROI_width, ROI_height, 1500,
-                         16, false, FPS, nBinning);
+        if (config.FOR_PC) {
+            camera = new DHCamera(config.SN);
+            camera->init((config.sensor_width / config.nBinning - config.ROI_width) / 2,
+                         (config.sensor_height / config.nBinning - config.ROI_height) / 2,
+                         config.ROI_width, config.ROI_height, 1500, 16, false, config.FPS,
+                         config.nBinning);
             if (!camera->start()) {
                 RCLCPP_WARN(rclcpp::get_logger("camera_publisher"), "No camera");
                 exit(0);
@@ -83,16 +76,19 @@ class CameraPublisher : public rclcpp::Node {
     void publish_camera_info() {
         sensor_msgs::msg::CameraInfo cam_p_0;
         cv::Mat cameraMatrix =
-            (cv::Mat_<double>(3, 3) << 1557.2 / nBinning, 0.2065,
-             (638.7311 / nBinning) / ((((float)sensor_width) / nBinning) / ROI_width), 0,
-             1557.5 / nBinning,
-             (515.1176 / nBinning) / ((((float)sensor_height) / nBinning) / ROI_height), 0, 0, 1);
+            (cv::Mat_<double>(3, 3) << 1557.2 / config.nBinning, 0.2065,
+             (638.7311 / config.nBinning) /
+                 ((((float)config.sensor_width) / config.nBinning) / config.ROI_width),
+             0, 1557.5 / config.nBinning,
+             (515.1176 / config.nBinning) /
+                 ((((float)config.sensor_height) / config.nBinning) / config.ROI_height),
+             0, 0, 1);
         cv::Mat distCoeffs =
             (cv::Mat_<double>(1, 5) << -0.1295, 0.0804, 4.85E-04, 6.37E-04, 0.2375);
-        cv::Mat dst = cv::getOptimalNewCameraMatrix(cameraMatrix, distCoeffs,
-                                                    cv::Size(ROI_width, ROI_height), 0);
-        cam_p_0.height = ROI_height;
-        cam_p_0.width = ROI_width;
+        cv::Mat dst = cv::getOptimalNewCameraMatrix(
+            cameraMatrix, distCoeffs, cv::Size(config.ROI_width, config.ROI_height), 0);
+        cam_p_0.height = config.ROI_height;
+        cam_p_0.width = config.ROI_width;
         cam_p_0.distortion_model = "plumb_bob";
         cam_p_0.k = {
             cameraMatrix.at<double>(0, 0), cameraMatrix.at<double>(0, 1),
@@ -142,14 +138,23 @@ class CameraPublisher : public rclcpp::Node {
 int main(int argc, char **argv) {
     rclcpp::init(argc, argv);
     system("clear");
-    cout << "                                                  \n"
-            " cccccccc   ii               ll   ll              \n"
-            "cc                aaaaaa     ll   ll      ooooooo \n"
-            "cc          ii         aa    ll   ll     oo     oo\n"
-            "cc          ii   aaaaaaaa    ll   ll     oo     oo\n"
-            "cc          ii   aa    aa    ll   ll     oo     oo\n"
-            " cccccccc   ii    aaaaaa a    ll   ll     ooooooo \n"
-            "                                                  \n";
+    cout << "\n"
+            "░█▀▀░▀█▀░█▀█░█░░░█░░░█▀█░█░░░█▀▀░█▀█░█▄█░▀█░\n"
+            "░█░░░░█░░█▀█░█░░░█░░░█░█░▀░░░█░░░█▀█░█░█░░█░\n"
+            "░▀▀▀░▀▀▀░▀░▀░▀▀▀░▀▀▀░▀▀▀░▀░░░▀▀▀░▀░▀░▀░▀░▀▀▀\n";
+
+    cout << "===================================";
+    cout << "configs: " << endl;
+    cout << "SN: " << config.SN << endl;
+    cout << "ROI_width: " << config.ROI_width << endl;
+    cout << "ROI_height: " << config.ROI_height << endl;
+    cout << "sensor_width: " << config.sensor_width << endl;
+    cout << "sensor_height: " << config.sensor_height << endl;
+    cout << "nBinning: " << config.nBinning << endl;
+    cout << "FPS: " << config.FPS << endl;
+    cout << "IS_ROTATE: " << (config.IS_ROTATE ? "true" : "false") << endl;
+    cout << "======== end for configs =========" << endl;
+
     rclcpp::spin(std::make_shared<CameraPublisher>(argc, argv));
     rclcpp::shutdown();
     return 0;

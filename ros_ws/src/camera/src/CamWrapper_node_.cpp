@@ -9,6 +9,7 @@
 #include "sensor_msgs/msg/camera_info.hpp"
 #include "sensor_msgs/msg/image.hpp"
 #include "std_msgs/msg/header.hpp"
+#include "toml.hpp"
 
 using namespace std;
 using namespace cv;
@@ -129,14 +130,10 @@ class CameraPublisher : public rclcpp::Node {
 int main(int argc, char **argv) {
     rclcpp::init(argc, argv);
     // system("clear");
-    cout << "                                                  \n"
-            " cccccccc   ii               ll   ll              \n"
-            "cc                aaaaaa     ll   ll      ooooooo \n"
-            "cc          ii         aa    ll   ll     oo     oo\n"
-            "cc          ii   aaaaaaaa    ll   ll     oo     oo\n"
-            "cc          ii   aa    aa    ll   ll     oo     oo\n"
-            " cccccccc   ii    aaaaaa a    ll   ll     ooooooo \n"
-            "                                                  \n";
+    cout << "\n"
+            "░█▀▀░▀█▀░█▀█░█░░░█░░░█▀█░█░░░█▀▀░█▀█░█▄█░▀▀▄\n"
+            "░█░░░░█░░█▀█░█░░░█░░░█░█░▀░░░█░░░█▀█░█░█░▄▀░\n"
+            "░▀▀▀░▀▀▀░▀░▀░▀▀▀░▀▀▀░▀▀▀░▀░░░▀▀▀░▀░▀░▀░▀░▀▀▀\n";
     rclcpp::spin(std::make_shared<CameraPublisher>(argc, argv));
     rclcpp::shutdown();
     return 0;

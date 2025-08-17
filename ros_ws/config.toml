@@ -1,17 +1,26 @@
 [camera1]
 IS_ROTATE = true
 FOR_PC = true
+# whether show the img in the system
+SHOW_CV_MONITOR_WINDOWS = true
+# the gain of img in the system shown img
+MONITOR_IMG_GAIN = [30, 30, 30]
+
 SN = "FGV22100004"
 ROI_width = 1024
 ROI_height = 768
 sensor_width = 1280
 sensor_height = 1024
 nBinning = 1
-FPS = 100.0
+FPS = 60.0
 
 [camera2]
 IS_ROTATE = true
 FOR_PC = true
+# whether show the img in the system
+SHOW_CV_MONITOR_WINDOWS = false
+# the gain of img in the system shown img
+MONITOR_IMG_GAIN = [30, 30, 30]
 SN = "FGV22100004"
 ROI_width = 1024
 ROI_height = 768

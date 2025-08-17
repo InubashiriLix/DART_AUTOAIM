@@ -27,6 +27,12 @@ std::string get_flag_option(const std::vector<std::string> &args, const std::str
 
 class CameraPublisher : public rclcpp::Node {
    public:
+    /**
+     * @brief constructor for camera publisher node
+     *
+     * @param argc
+     * @param argv
+     */
     CameraPublisher(int argc, char **argv) : Node("camera_publisher") {
         if (config.FOR_PC) {
             camera = new DHCamera(config.SN);
@@ -59,6 +65,9 @@ class CameraPublisher : public rclcpp::Node {
         }
     }
 
+    /**
+     * @brief the destructor for camera publisher node
+     */
     ~CameraPublisher() {
         if (camera != nullptr) {
             RCLCPP_INFO(this->get_logger(), "closing camera instance on quiting node");
@@ -73,6 +82,17 @@ class CameraPublisher : public rclcpp::Node {
     rclcpp::TimerBase::SharedPtr _info_timer_;
 
     cv::VideoCapture cap;
+
+    /**
+     * @brief 相机内参信息
+     * height: 图像高度，int 类型
+     * width: 图像宽度，int 类型
+     * distortion_model: 畸变模型，string 类型
+     * k: 相机内参矩阵（3x3），以一维数组形式存储，依次为 fx, 0, cx, 0, fy, cy, 0, 0, 1
+     *      其中 fx, fy 为焦距，cx, cy 为主点坐标
+     * d: 畸变系数数组
+     * p: 投影矩阵（3x4），一维数组
+     */
     void publish_camera_info() {
         sensor_msgs::msg::CameraInfo cam_p_0;
         cv::Mat cameraMatrix =
@@ -110,6 +130,10 @@ class CameraPublisher : public rclcpp::Node {
         cam_p_0.binning_y = 0;
         _camera_info_pub_->publish(cam_p_0);
     }
+
+    /**
+     * @brief the camera publish method
+     */
     void publish_camera() {
         camera->read(img_src);
         if (img_src.empty()) {
@@ -117,9 +141,10 @@ class CameraPublisher : public rclcpp::Node {
             return;
         }
         sensor_msgs::msg::Image _img_msg;
-#ifdef is_rotate
-        cv::rotate(img_src, img_src, cv::ROTATE_180);
-#endif
+
+        // is rotate
+        if (config.IS_ROTATE) cv::rotate(img_src, img_src, cv::ROTATE_180);
+
         std_msgs::msg::Header _header;
         cv_bridge::CvImage _cv_bridge;
         _header.stamp = this->get_clock()->now();
@@ -128,10 +153,14 @@ class CameraPublisher : public rclcpp::Node {
         _cv_bridge.toImageMsg(_img_msg);
 
         _image_pub_->publish(_img_msg);
-#ifdef SHOW_CAM
-        imshow("dst", img_src);
-        waitKey(1);
-#endif
+
+        // show img in the system
+        if (config.SHOW_CV_MONITOR_WINDOWS) {
+            img_src += cv::Scalar(config.MONITOR_IMG_GAIN[0], config.MONITOR_IMG_GAIN[1],
+                                  config.MONITOR_IMG_GAIN[2]);
+            imshow("dst", img_src);
+            waitKey(1);
+        }
     }
 };
 
@@ -143,16 +172,25 @@ int main(int argc, char **argv) {
             "░█░░░░█░░█▀█░█░░░█░░░█░█░▀░░░█░░░█▀█░█░█░░█░\n"
             "░▀▀▀░▀▀▀░▀░▀░▀▀▀░▀▀▀░▀▀▀░▀░░░▀▀▀░▀░▀░▀░▀░▀▀▀\n";
 
-    cout << "===================================";
+    cout << "===================================" << endl;
     cout << "configs: " << endl;
     cout << "SN: " << config.SN << endl;
+    cout << "IS_ROTATE: " << (config.IS_ROTATE ? "true" : "false") << endl;
+    cout << "FOR_PC: " << (config.FOR_PC ? "true" : "false") << endl;
+    cout << "SHOW_IMG: " << (config.SHOW_CV_MONITOR_WINDOWS ? "true" : "false") << endl;
+    std::cout << "MONITOR img GAIN: ";
+    for (size_t i = 0; i < config.MONITOR_IMG_GAIN.size(); ++i) {
+        std::cout << config.MONITOR_IMG_GAIN[i];
+        if (i + 1 < config.MONITOR_IMG_GAIN.size()) std::cout << ", ";
+    }
+    cout << endl;
+
     cout << "ROI_width: " << config.ROI_width << endl;
     cout << "ROI_height: " << config.ROI_height << endl;
     cout << "sensor_width: " << config.sensor_width << endl;
     cout << "sensor_height: " << config.sensor_height << endl;
     cout << "nBinning: " << config.nBinning << endl;
     cout << "FPS: " << config.FPS << endl;
-    cout << "IS_ROTATE: " << (config.IS_ROTATE ? "true" : "false") << endl;
     cout << "======== end for configs =========" << endl;
 
     rclcpp::spin(std::make_shared<CameraPublisher>(argc, argv));

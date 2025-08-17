@@ -1,11 +1,14 @@
 #include <iostream>
 #include <string>
+#include <vector>
 
 #include "toml.hpp"
 
 struct toml_config {
     bool IS_ROTATE = true;
     bool FOR_PC = true;
+    bool SHOW_CV_MONITOR_WINDOWS = false;
+    std::vector<int> MONITOR_IMG_GAIN;
     std::string SN = "";
     int ROI_width = 1024;
     int ROI_height = 768;
@@ -25,6 +28,15 @@ struct toml_config {
 
             IS_ROTATE = (*cam)["IS_ROTATE"].value_or(IS_ROTATE);
             FOR_PC = (*cam)["FOR_PC"].value_or(FOR_PC);
+            SHOW_CV_MONITOR_WINDOWS =
+                (*cam)["SHOW_CV_MONITOR_WINDOWS"].value_or(SHOW_CV_MONITOR_WINDOWS);
+            if (const auto* arr = (*cam)["MONITOR_IMG_GAIN"].as_array()) {
+                MONITOR_IMG_GAIN.clear();
+                for (const auto& v : *arr) {
+                    if (v.is_integer()) MONITOR_IMG_GAIN.push_back(int(v.value<int64_t>().value()));
+                }
+            }
+
             SN = (*cam)["SN"].value_or(SN);
             ROI_width = static_cast<int>((*cam)["ROI_width"].value_or(int64_t{ROI_width}));
             ROI_height = static_cast<int>((*cam)["ROI_height"].value_or(int64_t{ROI_height}));

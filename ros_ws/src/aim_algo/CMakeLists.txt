@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.8)
 project(aim_algo)
 
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
 endif()
@@ -20,5 +22,33 @@ if(BUILD_TESTING)
   set(ament_cmake_cpplint_FOUND TRUE)
   ament_lint_auto_find_test_dependencies()
 endif()
+
+include_directories(${OpenCV_INCLUDE_DIRS})
+
+add_executable(aim_algo
+    src/detector.cc
+    src/kalman.cc
+    src/tracker.cc
+    src/main.cc
+)
+
+ament_target_dependencies(
+    aim_algo
+    rclcpp
+)
+
+include_directories(
+    include
+)
+
+target_link_libraries(aim_algo
+    ${OpenCV_LIBS}
+)
+
+install(
+    TARGETS
+    aim_algo
+    DESTINATION lib/${PROJECT_NAME}
+)
 
 ament_package()

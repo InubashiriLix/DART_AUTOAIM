@@ -2,7 +2,7 @@
 IS_ROTATE = true
 FOR_PC = true
 # whether show the img in the system
-SHOW_CV_MONITOR_WINDOWS = true
+SHOW_CV_MONITOR_WINDOWS = false
 # the gain of img in the system shown img
 MONITOR_IMG_GAIN = [30, 30, 30]
 
@@ -28,3 +28,8 @@ sensor_width = 1280
 sensor_height = 1024
 nBinning = 1
 FPS = 100.0
+
+[detector]
+SHOW_CV_MONITOR_WINDOWS = false
+center_x = 612
+center_y = 384

@@ -10,6 +10,11 @@ endif()
 # find dependencies
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
+find_package(std_msgs REQUIRED)
+find_package(sensor_msgs REQUIRED)
+find_package(cv_bridge REQUIRED)
+
+find_package(OpenCV REQUIRED)
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
@@ -32,9 +37,11 @@ add_executable(aim_algo
     src/main.cc
 )
 
-ament_target_dependencies(
-    aim_algo
+ament_target_dependencies(aim_algo
     rclcpp
+    std_msgs
+    sensor_msgs
+    cv_bridge
 )
 
 include_directories(
@@ -43,6 +50,8 @@ include_directories(
 
 target_link_libraries(aim_algo
     ${OpenCV_LIBS}
+    -lglog
+    -lgxiapi
 )
 
 install(

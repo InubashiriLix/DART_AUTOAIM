@@ -4,6 +4,7 @@
 
 struct detector_config {
     bool SHOW_CV_MONITOR_WINDOWS = false;
+    int camera_qos_keep_last;
     int center_x;
     int center_y;
 
@@ -15,6 +16,9 @@ struct detector_config {
             const auto* detector = config["detector"].as_table();
             if (!detector) throw std::runtime_error("missing [detector]");
             SHOW_CV_MONITOR_WINDOWS = (*detector)["SHOW_CV_MONITOR_WINDOWS"].value_or(false);
+
+            camera_qos_keep_last = (*detector)["camera_qos_keep_last"].value_or(3);
+
             center_x = (*detector)["center_x"].value_or(512);
             center_y = (*detector)["center_y"].value_or(384);
         } catch (const std::out_of_range& e) {

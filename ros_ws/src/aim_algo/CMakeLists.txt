@@ -34,7 +34,6 @@ add_executable(aim_algo
     src/detector.cc
     src/kalman.cc
     src/tracker.cc
-    src/main.cc
 )
 
 ament_target_dependencies(aim_algo

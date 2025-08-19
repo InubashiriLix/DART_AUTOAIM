@@ -1,4 +1,4 @@
-#include "CamWrapper.h"
+#include "camera/CamWrapper.h"
 
 #include <glog/logging.h>
 
@@ -6,7 +6,7 @@
 #include <mutex>
 #include <thread>
 
-#include "CamWrapperDH.h"
+#include "camera/CamWrapperDH.h"
 
 #define ROI_width 1024
 #define ROI_height 768

@@ -10,22 +10,6 @@ Detector::Detector(const rclcpp::NodeOptions& opts)
 
     auto sensor_qos = rclcpp::SensorDataQoS().keep_last(4).best_effort().durability_volatile();
 
-    rclcpp::SubscriptionOptions img_opt, info_opt;
-    auto cg_img = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
-    auto cg_info = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
-    img_opt.callback_group = cg_img;
-    info_opt.callback_group = cg_info;
-
-    _cam_image_sub_ = this->create_subscription<sensor_msgs::msg::Image>(
-        "image_raw", sensor_qos, std::bind(&Detector::image_callback, this, std::placeholders::_1),
-        img_opt);
-
-    _cam_info_sub_ = this->create_subscription<sensor_msgs::msg::CameraInfo>(
-        "camera_info", sensor_qos,
-        std::bind(&Detector::image_info_callback, this, std::placeholders::_1), info_opt);
-
-    _cmd_pub_ = this->create_publisher<geometry_msgs::msg::Twist>("/gimbal/cmd", 10);
-
     // 工作线程
     // _th_img = std::thread([this] { img_worker(); });
     // _th_kf = std::thread([this] { kf_worker(); });
@@ -55,29 +39,6 @@ void Detector::kf_worker() {
         // TODO: 从测量队列取数据，KF predict/update，最后发布控制
         std::this_thread::yield();
     }
-}
-
-void Detector::image_callback(const sensor_msgs::msg::Image::SharedPtr msg) {
-    // Process the image message
-    cv::Mat img = cv_bridge::toCvShare(msg, "bgr8")->image;
-    cv::Point center(img.cols / 2, img.rows / 2);
-    cv::circle(img, center, 5, cv::Scalar(0, 0, 255), -1);
-    if (_config.SHOW_CV_MONITOR_WINDOWS) {
-        cv::imshow("Detector Image", img);
-        cv::waitKey(1);
-    }
-
-    double delay_ms =
-        ((msg->header.stamp.sec + msg->header.stamp.nanosec * 1e-9) - now().seconds()) * 1000.0;
-    RCLCPP_INFO(this->get_logger(), "delay: %.2f ms", delay_ms);
-}
-
-void Detector::image_info_callback(const sensor_msgs::msg::CameraInfo::SharedPtr info) {
-    // RCLCPP_INFO(this->get_logger(), "binning_x: %d, binning_y %d", info->binning_x,
-    //             info->binning_y);
-    RCLCPP_DEBUG(this->get_logger(), "width: %d, height %d", info->width, info->height);
-    RCLCPP_DEBUG(this->get_logger(), "x_center: %d, y_center: %d", info->width / 2,
-                 info->height / 2);
 }
 
 void Detector::welcom() {

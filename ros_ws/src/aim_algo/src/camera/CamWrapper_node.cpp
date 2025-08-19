@@ -2,6 +2,7 @@
 #include <chrono>
 #include <iostream>
 #include <mutex>
+#include <numeric>
 #include <string>
 #include <thread>
 
@@ -19,11 +20,9 @@ using namespace std;
 using namespace cv;
 using namespace std::chrono_literals;
 
-// ===== 全局配置与相机句柄（照你原来的习惯） =====
 auto config = camera_config();
 Camera *camera = nullptr;
 
-// ===== 工具：安全获取命令行 flag（保持原函数） =====
 std::string get_flag_option(const std::vector<std::string> &args, const std::string &option) {
     auto it = std::find(args.begin(), args.end(), option);
     if (it != args.end() && ++it != args.end()) return *it;
@@ -35,27 +34,27 @@ class CameraPublisher : public rclcpp::Node {
     // 构造里只做“轻初始化”，真正开线程放到 start()
     CameraPublisher(int /*argc*/, char ** /*argv*/)
         : Node("camera_publisher", rclcpp::NodeOptions().use_intra_process_comms(true)) {
-        // QoS：图像流只保留最新帧（减少历史堆积）
         _image_pub_ = this->create_publisher<sensor_msgs::msg::Image>(
             declare_parameter<std::string>("camera_topic", "image_raw"),
             rclcpp::SensorDataQoS().keep_last(1).best_effort());
 
-        // CameraInfo：可靠 + 类 latch
-        _camera_info_pub_ = this->create_publisher<sensor_msgs::msg::CameraInfo>(
-            "camera_info", rclcpp::QoS(rclcpp::KeepLast(1))
-                               .reliability(RMW_QOS_POLICY_RELIABILITY_RELIABLE)
-                               .durability(RMW_QOS_POLICY_DURABILITY_TRANSIENT_LOCAL));
+        auto qos_info = rclcpp::QoS(rclcpp::KeepLast(1))
+                            .reliability(RMW_QOS_POLICY_RELIABILITY_RELIABLE)
+                            .durability(RMW_QOS_POLICY_DURABILITY_TRANSIENT_LOCAL);
 
-        // 只保留 CameraInfo 的定时器
+        rclcpp::PublisherOptions info_opts;
+        info_opts.use_intra_process_comm = rclcpp::IntraProcessSetting::Disable;
+
+        _camera_info_pub_ = this->create_publisher<sensor_msgs::msg::CameraInfo>(
+            "camera_info", qos_info, info_opts);
+
         _info_timer_ =
             this->create_wall_timer(100ms, std::bind(&CameraPublisher::publish_camera_info, this));
     }
 
-    // ======== 生命周期：start / stop（多线程友好） ========
     bool start() {
         if (_running.load()) return true;
 
-        // 打开相机（只做一次）
         if (config.FOR_PC) {
             camera = new DHCamera(config.SN);
             bool ok = camera->init((config.sensor_width / config.nBinning - config.ROI_width) / 2,
@@ -71,7 +70,6 @@ class CameraPublisher : public rclcpp::Node {
             return false;
         }
 
-        // 预分配一次 Image 消息（减少每帧分配）
         _prepare_image_msg();
 
         _running.store(true);
@@ -123,26 +121,36 @@ class CameraPublisher : public rclcpp::Node {
     // 采集 + 发布：尽量把热路径做轻
     void worker_loop() {
         cv::Mat frame;
+        vector<double> time_stamps = {};
         while (_running.load(std::memory_order_relaxed)) {
+            auto start_tp = this->now();
             if (!camera->read(frame) || frame.empty()) {
-                // 相机可能空读，短暂休眠避免空转
                 std::this_thread::sleep_for(1ms);
                 continue;
             }
 
-            // 旋转（如需）
             if (config.IS_ROTATE) cv::rotate(frame, frame, cv::ROTATE_180);
 
-            // —— 发布到 ROS（尽量零分配，只有一次 memcpy 到消息 data）——
             auto now = this->get_clock()->now();
             fill_image_msg(_img_msg_buf, now, frame);
             _image_pub_->publish(_img_msg_buf);
 
-            // —— 给 UI 线程的最新帧（独立，不影响发布）——
             if (config.SHOW_CV_MONITOR_WINDOWS) {
-                auto cp = std::make_shared<cv::Mat>(frame);  // UI 线程里可能做增益/色彩，留拷贝
+                auto cp = std::make_shared<cv::Mat>(
+                    frame);  // ui thread may modify the original img, so just copy it
                 std::lock_guard<std::mutex> lk(_latest_mtx);
-                _latest_frame_for_ui = std::move(cp);  // 只保留最新
+                _latest_frame_for_ui = std::move(cp);
+            }
+
+            auto end = this->now();
+            auto ms_used = (end - start_tp).nanoseconds() / 1e6;
+
+            time_stamps.push_back(ms_used);
+            auto delay_avg =
+                std::accumulate(time_stamps.begin(), time_stamps.end(), 0.0) / time_stamps.size();
+            if (time_stamps.size() > 3000) {
+                RCLCPP_INFO(this->get_logger(), "avg img delay: used: %.3f ms", delay_avg);
+                time_stamps.clear();  // 保持 300 帧的平均
             }
         }
     }
@@ -215,7 +223,6 @@ class CameraPublisher : public rclcpp::Node {
         _camera_info_pub_->publish(cam);
     }
 
-    // 预分配一次消息缓冲（编码/尺寸固定时很好用）
     void _prepare_image_msg() {
         _img_msg_buf.header.frame_id = "camera_optical_frame";
         _img_msg_buf.height = config.ROI_height;
@@ -227,23 +234,21 @@ class CameraPublisher : public rclcpp::Node {
         _img_msg_buf.data.resize(_img_msg_buf.step * _img_msg_buf.height);
     }
 
-    // 快速填充消息（仅复制像素数据；避免每帧 vector 重新分配）
     inline void fill_image_msg(sensor_msgs::msg::Image &msg, const rclcpp::Time &stamp,
                                const cv::Mat &bgr) {
         msg.header.stamp = stamp;
-        // 健壮性：确认尺寸/类型匹配
+
         if (bgr.cols != (int)msg.width || bgr.rows != (int)msg.height || bgr.type() != CV_8UC3) {
-            // 若和预分配不一致，就按当前帧重配一次（一般不会发生）
             msg.width = bgr.cols;
             msg.height = bgr.rows;
             msg.step = msg.width * 3;
             msg.data.resize(msg.step * msg.height);
         }
+
         std::memcpy(msg.data.data(), bgr.data, msg.step * msg.height);
     }
 };
 
-// ===== main：start/stop + 多线程执行器 =====
 int main(int argc, char **argv) {
     rclcpp::init(argc, argv);
     system("clear");
@@ -271,7 +276,6 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    // 多线程执行器：让定时器/服务回调不受你的工作线程影响
     rclcpp::executors::MultiThreadedExecutor exec;
     exec.add_node(node);
     exec.spin();

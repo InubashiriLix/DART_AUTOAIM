@@ -14,6 +14,8 @@ sensor_height = 1024
 nBinning = 1
 FPS = 60.0
 
+avg_frame_delay_num = 300 # how many frames to average for delay calculation
+
 
 [detector]
 SHOW_CV_MONITOR_WINDOWS = false

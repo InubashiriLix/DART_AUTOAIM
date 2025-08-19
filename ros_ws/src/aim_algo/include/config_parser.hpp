@@ -15,6 +15,8 @@ struct camera_config {
     int nBinning = 1;
     float FPS = 100.0;
 
+    int avg_frame_delay_num = 300;
+
     camera_config(
         const std::string& sub_table_name = "camera1",
         const std::string& toml_abs_path = "/home/orangepi/08_DART_AUTOAIM/ros_ws/config.toml") {
@@ -43,6 +45,8 @@ struct camera_config {
                 static_cast<int>((*cam)["sensor_height"].value_or(int64_t{sensor_height}));
             nBinning = static_cast<int>((*cam)["nBinning"].value_or(int64_t{nBinning}));
             FPS = static_cast<float>((*cam)["FPS"].value_or(double{FPS}));
+            avg_frame_delay_num = static_cast<double>(
+                (*cam)["avg_frame_delay_num"].value_or(int{avg_frame_delay_num}));
         } catch (const std::out_of_range& e) {
             // Handle missing key
             std::cerr << "Missing key: " << e.what() << std::endl;

@@ -1,0 +1,234 @@
+#include "camera/CamNode.hpp"
+
+#include <chrono>
+#include <iostream>
+#include <numeric>
+#include <opencv2/opencv.hpp>
+#include <vector>
+
+#include "camera/CamWrapper.h"
+#include "camera/CamWrapperDH.h"
+#include "config_parser.hpp"
+#include "cv_bridge/cv_bridge.h"
+#include "sensor_msgs/image_encodings.hpp"
+#include "std_msgs/msg/header.hpp"
+
+using namespace std;
+using namespace cv;
+using namespace std::chrono_literals;
+
+static auto config = camera_config();
+static Camera *camera = nullptr;
+
+CameraPublisher::CameraPublisher(int /*argc*/, char ** /*argv*/)
+    : Node("camera_publisher", rclcpp::NodeOptions().use_intra_process_comms(true)) {
+    _image_pub_ = this->create_publisher<sensor_msgs::msg::Image>(
+        declare_parameter<std::string>("camera_topic", "image_raw"),
+        rclcpp::SensorDataQoS().keep_last(1).best_effort());
+
+    auto qos_info = rclcpp::QoS(rclcpp::KeepLast(1))
+                        .reliability(RMW_QOS_POLICY_RELIABILITY_RELIABLE)
+                        .durability(RMW_QOS_POLICY_DURABILITY_TRANSIENT_LOCAL);
+
+    rclcpp::PublisherOptions info_opts;
+    info_opts.use_intra_process_comm = rclcpp::IntraProcessSetting::Disable;
+
+    _camera_info_pub_ =
+        this->create_publisher<sensor_msgs::msg::CameraInfo>("camera_info", qos_info, info_opts);
+
+    _info_timer_ =
+        this->create_wall_timer(100ms, std::bind(&CameraPublisher::publish_camera_info, this));
+}
+
+bool CameraPublisher::start() {
+    if (_running.load()) return true;
+
+    if (config.FOR_PC) {
+        camera = new DHCamera(config.SN);
+        bool ok = camera->init((config.sensor_width / config.nBinning - config.ROI_width) / 2,
+                               (config.sensor_height / config.nBinning - config.ROI_height) / 2,
+                               config.ROI_width, config.ROI_height, 1500, 16, false, config.FPS,
+                               config.nBinning);
+        if (!ok || !camera->start()) {
+            RCLCPP_WARN(this->get_logger(), "No camera");
+            return false;
+        }
+    } else {
+        RCLCPP_WARN(this->get_logger(), "FOR_PC=false, not opening hardware camera.");
+        return false;
+    }
+
+    _prepare_image_msg();
+    _running.store(true);
+
+    welcom();
+
+    _th_worker = std::thread([this] { this->worker_loop(); });
+    if (config.SHOW_CV_MONITOR_WINDOWS) {
+        _th_ui = std::thread([this] { this->ui_loop(); });
+    }
+    return true;
+}
+
+void CameraPublisher::stop() {
+    if (!_running.exchange(false)) return;
+
+    if (_th_worker.joinable()) _th_worker.join();
+    if (_th_ui.joinable()) _th_ui.join();
+
+    if (camera) {
+        RCLCPP_INFO(this->get_logger(), "closing camera instance on quitting node");
+        camera->stop();
+        delete camera;
+        camera = nullptr;
+    }
+}
+
+bool CameraPublisher::is_running() const { return _running.load(); }
+
+sensor_msgs::msg::Image CameraPublisher::get_image_buf() { return _img_msg_buf; }
+
+CameraPublisher::~CameraPublisher() { stop(); }
+
+void CameraPublisher::welcom() {
+    system("clear");
+    std::cout << "\n"
+                 "░█▀▀░▀█▀░█▀█░█░░░█░░░█▀█░█░░░█▀▀░█▀█░█▄█░▀█░\n"
+                 "░█░░░░█░░█▀█░█░░░█░░░█░█░▀░░░█░░░█▀█░█░█░░█░\n"
+                 "░▀▀▀░▀▀▀░▀░▀░▀▀▀░▀▀▀░▀▀▀░▀░░░▀▀▀░▀░▀░▀░▀░▀▀▀\n";
+    std::cout << "===================================\nconfigs:\n";
+    std::cout << "SN: " << config.SN << "\n"
+              << "IS_ROTATE: " << (config.IS_ROTATE ? "true" : "false") << "\n"
+              << "FOR_PC: " << (config.FOR_PC ? "true" : "false") << "\n"
+              << "SHOW_IMG: " << (config.SHOW_CV_MONITOR_WINDOWS ? "true" : "false") << "\n"
+              << "MONITOR img GAIN: ";
+    for (size_t i = 0; i < config.MONITOR_IMG_GAIN.size(); ++i)
+        std::cout << config.MONITOR_IMG_GAIN[i]
+                  << (i + 1 < config.MONITOR_IMG_GAIN.size() ? ", " : "");
+    std::cout << "\nROI_width: " << config.ROI_width << "\nROI_height: " << config.ROI_height
+              << "\nsensor_width: " << config.sensor_width
+              << "\nsensor_height: " << config.sensor_height << "\nnBinning: " << config.nBinning
+              << "\nFPS: " << config.FPS << "\n======== end for configs =========\n";
+}
+
+void CameraPublisher::worker_loop() {
+    cv::Mat frame;
+    std::vector<double> time_stamps;
+    time_stamps.reserve(512);
+
+    while (_running.load(std::memory_order_relaxed)) {
+        auto start_tp = this->now();
+
+        if (!camera->read(frame) || frame.empty()) {
+            std::this_thread::sleep_for(1ms);
+            continue;
+        }
+
+        if (config.IS_ROTATE) cv::rotate(frame, frame, cv::ROTATE_180);
+
+        auto now = this->get_clock()->now();
+        fill_image_msg(_img_msg_buf, now, frame);
+        _image_pub_->publish(_img_msg_buf);
+
+        if (config.SHOW_CV_MONITOR_WINDOWS) {
+            auto cp = std::make_shared<cv::Mat>(frame);
+            std::lock_guard<std::mutex> lk(_latest_mtx);
+            _latest_frame_for_ui = std::move(cp);
+        }
+
+        auto end = this->now();
+        auto ms_used = (end - start_tp).nanoseconds() / 1e6;
+        time_stamps.push_back(ms_used);
+        if (time_stamps.size() >= config.avg_frame_delay_num) {
+            double sum = std::accumulate(time_stamps.begin(), time_stamps.end(), 0.0);
+            double delay_avg = sum / time_stamps.size();
+            RCLCPP_INFO(this->get_logger(), "avg %d frame delay: %.3f ms",
+                        config.avg_frame_delay_num, delay_avg);
+            time_stamps.clear();
+        }
+    }
+}
+
+void CameraPublisher::ui_loop() {
+    cv::setNumThreads(1);
+    const int ui_interval_ms = 50;
+    while (_running.load(std::memory_order_relaxed)) {
+        std::shared_ptr<cv::Mat> f;
+        {
+            std::lock_guard<std::mutex> lk(_latest_mtx);
+            f.swap(_latest_frame_for_ui);
+        }
+        if (f && !f->empty()) {
+            cv::Mat view = *f;
+            if (!config.MONITOR_IMG_GAIN.empty()) {
+                cv::Scalar g(0, 0, 0);
+                for (int i = 0; i < 3 && i < (int)config.MONITOR_IMG_GAIN.size(); ++i)
+                    g[i] = config.MONITOR_IMG_GAIN[i];
+                view = view + g;
+            }
+            cv::imshow("dst", view);
+            cv::waitKey(1);
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(ui_interval_ms));
+    }
+    cv::destroyWindow("dst");
+}
+
+void CameraPublisher::publish_camera_info() {
+    sensor_msgs::msg::CameraInfo cam;
+    cv::Mat K = (cv::Mat_<double>(3, 3) << 1557.2 / config.nBinning, 0.2065,
+                 (638.7311 / config.nBinning) /
+                     ((((double)config.sensor_width) / config.nBinning) / config.ROI_width),
+                 0, 1557.5 / config.nBinning,
+                 (515.1176 / config.nBinning) /
+                     ((((double)config.sensor_height) / config.nBinning) / config.ROI_height),
+                 0, 0, 1);
+    cv::Mat D = (cv::Mat_<double>(1, 5) << -0.1295, 0.0804, 4.85E-04, 6.37E-04, 0.2375);
+    cv::Mat P3x3 = getOptimalNewCameraMatrix(K, D, Size(config.ROI_width, config.ROI_height), 0);
+
+    cam.height = config.ROI_height;
+    cam.width = config.ROI_width;
+    cam.distortion_model = "plumb_bob";
+
+    cam.k = {K.at<double>(0, 0), K.at<double>(0, 1), K.at<double>(0, 2),
+             K.at<double>(1, 0), K.at<double>(1, 1), K.at<double>(1, 2),
+             K.at<double>(2, 0), K.at<double>(2, 1), K.at<double>(2, 2)};
+
+    cam.d = {D.at<double>(0, 0), D.at<double>(0, 1), D.at<double>(0, 2), D.at<double>(0, 3),
+             D.at<double>(0, 4)};
+
+    cam.p = {P3x3.at<double>(0, 0), P3x3.at<double>(0, 1), P3x3.at<double>(0, 2), 0.0,
+             P3x3.at<double>(1, 0), P3x3.at<double>(1, 1), P3x3.at<double>(1, 2), 0.0,
+             P3x3.at<double>(2, 0), P3x3.at<double>(2, 1), P3x3.at<double>(2, 2), 1.0};
+
+    cam.r = {1, 0, 0, 0, 1, 0, 0, 0, 1};
+    cam.binning_x = 0;
+    cam.binning_y = 0;
+
+    cam.header.stamp = this->get_clock()->now();
+    cam.header.frame_id = "camera_optical_frame";
+    _camera_info_pub_->publish(cam);
+}
+
+void CameraPublisher::_prepare_image_msg() {
+    _img_msg_buf.header.frame_id = "camera_optical_frame";
+    _img_msg_buf.height = config.ROI_height;
+    _img_msg_buf.width = config.ROI_width;
+    _img_msg_buf.encoding = sensor_msgs::image_encodings::BGR8;
+    _img_msg_buf.is_bigendian = false;
+    _img_msg_buf.step = static_cast<sensor_msgs::msg::Image::_step_type>(_img_msg_buf.width * 3);
+    _img_msg_buf.data.resize(_img_msg_buf.step * _img_msg_buf.height);
+}
+
+void CameraPublisher::fill_image_msg(sensor_msgs::msg::Image &msg, const rclcpp::Time &stamp,
+                                     const cv::Mat &bgr) {
+    msg.header.stamp = stamp;
+
+    if (bgr.cols != (int)msg.width || bgr.rows != (int)msg.height || bgr.type() != CV_8UC3) {
+        msg.width = bgr.cols;
+        msg.height = bgr.rows;
+        msg.step = msg.width * 3;
+        msg.data.resize(msg.step * msg.height);
+    }
+    std::memcpy(msg.data.data(), bgr.data, msg.step * msg.height);
+}

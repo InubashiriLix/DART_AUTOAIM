@@ -32,7 +32,7 @@ include_directories(${OpenCV_INCLUDE_DIRS})
 
 add_executable(aim_algo
     src/camera/CamWrapper.cpp
-    src/camera/CamWrapper_node.cpp
+    src/camera/CamNode.cc
     src/detector.cc
     src/kalman.cc
     src/tracker.cc

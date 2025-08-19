@@ -1,5 +1,7 @@
 #include "detector.hpp"
 
+#include "camera/CamNode.hpp"
+
 Detector::Detector(const rclcpp::NodeOptions& opts)
     : Node("algo_detector_node", rclcpp::NodeOptions(opts).use_intra_process_comms(true)) {
     this->_center_x = _config.center_x;

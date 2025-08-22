@@ -15,6 +15,7 @@ find_package(sensor_msgs REQUIRED)
 find_package(cv_bridge REQUIRED)
 
 find_package(OpenCV REQUIRED)
+find_package(Eigen3 REQUIRED)
 
 if(BUILD_TESTING)
     find_package(ament_lint_auto REQUIRED)
@@ -53,6 +54,7 @@ include_directories(
 
 target_link_libraries(aim_algo
     ${OpenCV_LIBS}
+    Eigen3::Eigen
     -lglog
     -lgxiapi
 )

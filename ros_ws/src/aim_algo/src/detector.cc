@@ -6,21 +6,47 @@ Detector::Detector(CameraPublisher&& cam_node)
     this->_center_y = _config.center_y;
     this->_cam_qos_keep_last = _config.camera_qos_keep_last;
 
-    auto sensor_qos = rclcpp::SensorDataQoS().keep_last(4).best_effort().durability_volatile();
-
-    _th_worker = std::thread([this] { img_worker(); });
+    _th_worker = std::thread([this] { detector_worker(); });
     _th_kf = std::thread([this] { kf_worker(); });
 
     welcom();
 }
 
-void Detector::img_worker() { while (_running); }
+void Detector::detector_worker() {
+    while (_running.load(std::memory_order_relaxed)) {
+        //
+    }
+}
 
 void Detector::kf_worker() {
-    // while (_running.load(std::memory_order_relaxed)) {
-    //     // TODO: 从测量队列取数据，KF predict/update，最后发布控制
-    //     std::this_thread::yield();
-    // }
+    while (_running.load(std::memory_order_relaxed)) {
+        //
+    }
+}
+
+void Detector::commu_worker() {
+    while (_running.load(std::memory_order_relaxed)) {
+        // 这里可以添加通信逻辑
+    }
+}
+
+bool Detector::start() {
+    if (_running.load()) return true;
+
+    _th_worker = std::thread([this] { this->detector_worker(); });
+    _th_kf = std::thread([this] { this->kf_worker(); });
+    _th_commu = std::thread([this] { this->commu_worker(); });
+
+    _running.store(true);
+    return true;
+}
+
+void Detector::stop() {
+    if (!_running.exchange(false)) return;
+
+    if (_th_worker.joinable()) _th_worker.join();
+    if (_th_kf.joinable()) _th_kf.join();
+    RCLCPP_INFO(this->get_logger(), "detector node, kalman node thread closed");
 }
 
 void Detector::welcom() {

@@ -96,7 +96,6 @@ sensor_msgs::msg::CameraInfo CameraPublisher::get_camera_info_buf() { return _ca
 CameraPublisher::~CameraPublisher() { stop(); }
 
 void CameraPublisher::welcom() {
-    system("clear");
     std::cout << "\n"
                  "░█▀▀░▀█▀░█▀█░█░░░█░░░█▀█░█░░░█▀▀░█▀█░█▄█░▀█░\n"
                  "░█░░░░█░░█▀█░█░░░█░░░█░█░▀░░░█░░░█▀█░█░█░░█░\n"

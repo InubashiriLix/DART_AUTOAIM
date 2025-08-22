@@ -69,6 +69,9 @@ class Detector : public rclcpp::Node {
    public:
     Detector(std::shared_ptr<CameraPublisher> cam_node);
 
+    bool start();
+    void stop();
+
    private:
     std::shared_ptr<CameraPublisher> _cam_node;
 
@@ -89,14 +92,11 @@ class Detector : public rclcpp::Node {
     cv::Mat kOpen_, kClose_;
     WhiteLampParams wl_;
 
-    bool start();
-    void stop();
-
     std::thread _th_worker;
     std::thread _th_kf;
     std::thread _th_commu;
     std::thread _th_ui;
-    std::atomic<bool> _running{true};
+    std::atomic<bool> _running{false};
 
     std::queue<KalmanMsg> _kalman_msg_queue;
     std::mutex _kalman_mgs_mutex;

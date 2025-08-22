@@ -27,6 +27,7 @@ void Detector::detector_worker() {
         cv::Point2f center_px = cv::Point2f(0, 0);
         cv::Rect bbox;
         bool find = detect_white_lamp(frame, center_px, bbox, &_ui_frame);
+        if (find) RCLCPP_INFO(this->get_logger(), "find");
     }
 }
 
@@ -49,17 +50,20 @@ void Detector::ui_worker() {
 
 void Detector::kf_worker() {
     while (_running.load(std::memory_order_relaxed)) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
 }
 
 void Detector::commu_worker() {
     while (_running.load(std::memory_order_relaxed)) {
-        // 这里可以添加通信逻辑
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
 }
 
 bool Detector::start() {
     if (_running.load()) return true;
+
+    _running.store(true);
 
     _th_worker = std::thread([this] { this->detector_worker(); });
     _th_kf = std::thread([this] { this->kf_worker(); });
@@ -67,7 +71,7 @@ bool Detector::start() {
 
     if (_config.SHOW_CV_MONITOR_WINDOWS) _th_ui = std::thread([this] { this->ui_worker(); });
 
-    _running.store(true);
+    RCLCPP_INFO(this->get_logger(), "detector node thread start");
     return true;
 }
 
@@ -80,7 +84,7 @@ void Detector::stop() {
 }
 
 void Detector::welcom() {
-    std::cout << "detector start" << std::endl;
+    std::cout << "welcom to detector" << std::endl;
 
     std::cout << "░▀█▀░█▀█░█░█░░░█▀▄░█▀▀░▀█▀░█▀▀░█▀▀░▀█▀░█▀█░█▀▄\n"
                  "░░█░░█░█░█░█░░░█░█░█▀▀░░█░░█▀▀░█░░░░█░░█░█░█▀▄\n"
@@ -92,12 +96,3 @@ void Detector::welcom() {
     std::cout << "CENTER_Y: " << _config.center_y << std::endl;
     std::cout << "=========== configs end ============" << std::endl;
 }
-
-// int main(int argc, char** argv) {
-//     rclcpp::init(argc, argv);
-//     auto node = std::make_shared<Detector>();
-//     rclcpp::executors::MultiThreadedExecutor exec;
-//     exec.add_node(node);
-//     exec.spin();
-//     rclcpp::shutdown();
-// }

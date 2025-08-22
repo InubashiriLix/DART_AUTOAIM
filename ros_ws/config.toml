@@ -18,7 +18,7 @@ avg_frame_delay_num = 300 # how many frames to average for delay calculation
 
 
 [detector]
-SHOW_CV_MONITOR_WINDOWS = false
+SHOW_CV_MONITOR_WINDOWS = true
 camera_qos_keep_last = 1
 center_x = 612
 center_y = 384

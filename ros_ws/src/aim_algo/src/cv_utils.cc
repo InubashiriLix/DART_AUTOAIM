@@ -7,7 +7,6 @@ void Detector::init_white_lamp_detector(const WhiteLampParams& p) {
     time_stamps.clear();
 }
 
-// 纯检测：返回是否找到；输出 center_px（像素坐标）与 bbox
 bool Detector::detect_white_lamp(const cv::Mat& bgr, cv::Point2f& center_px, cv::Rect& bbox,
                                  cv::Mat* debug) {
     // 颜色空间与通道
@@ -18,17 +17,15 @@ bool Detector::detect_white_lamp(const cv::Mat& bgr, cv::Point2f& center_px, cv:
     Cr_ = ch[1];
     Cb_ = ch[2];
 
-    // 阈值：Y 高、Cr/Cb 接近 128（低色度）
+    // 阈值
     cv::threshold(Y_, mY_, wl_.Y_min, 255, cv::THRESH_BINARY);
     cv::absdiff(Cr_, cv::Scalar(128), tmpCr_);
     cv::absdiff(Cb_, cv::Scalar(128), tmpCb_);
     cv::threshold(tmpCr_, mCr_, wl_.Cr_tol, 255, cv::THRESH_BINARY_INV);
     cv::threshold(tmpCb_, mCb_, wl_.Cb_tol, 255, cv::THRESH_BINARY_INV);
-
-    // 合并掩码
     mask_ = mY_ & mCr_ & mCb_;
 
-    // 形态学（可选）
+    // 形态学
     if (!kOpen_.empty()) cv::morphologyEx(mask_, mask_, cv::MORPH_OPEN, kOpen_);
     if (!kClose_.empty()) cv::morphologyEx(mask_, mask_, cv::MORPH_CLOSE, kClose_);
 
@@ -44,31 +41,45 @@ bool Detector::detect_white_lamp(const cv::Mat& bgr, cv::Point2f& center_px, cv:
         cv::Rect box = cv::boundingRect(contours[i]);
         double solidity = area / std::max(1.0, (double)box.area());
         if (solidity < wl_.min_solidity) continue;
-        // 简单用面积打分（也可加入亮度均值提高稳定性）
         if (area > best_score) {
             best_score = area;
             best = i;
         }
     }
-    // if (best < 0 && !debug) return false;
-    if (best < 0) return false;
 
-    // 计算中心（质心比矩形中心稳）
+    // —— 没有目标：可以画调试图，但必须 return
+    if (best < 0) {
+        if (debug) {
+            bgr.copyTo(*debug);
+            // 也可以把 mask 侧显出来帮助调参（可选）：
+            // cv::Mat mask_vis; cv::cvtColor(mask_, mask_vis, cv::COLOR_GRAY2BGR);
+            // cv::addWeighted(*debug, 1.0, mask_vis, 0.3, 0, *debug);
+            cv::putText(*debug, "NO TARGET", {10, 30}, cv::FONT_HERSHEY_SIMPLEX, 0.8, {0, 0, 255},
+                        2);
+        }
+        return false;
+    }
+
     cv::Moments m = cv::moments(contours[best]);
-    // if (m.m00 <= 1e-3 && !debug) return false;
-    if (m.m00 <= 1e-3) return false;
+    if (m.m00 <= 1e-3) {
+        if (debug) {
+            bgr.copyTo(*debug);
+            cv::putText(*debug, "INVALID MOMENTS", {10, 30}, cv::FONT_HERSHEY_SIMPLEX, 0.8,
+                        {0, 0, 255}, 2);
+        }
+        return false;
+    }
 
-    center_px = cv::Point2f(float(m.m10 / m.m00), float(m.m01 / m.m00));
+    center_px = {float(m.m10 / m.m00), float(m.m01 / m.m00)};
     bbox = cv::boundingRect(contours[best]);
 
-    // 可视化（可选）
     if (debug) {
         bgr.copyTo(*debug);
-        cv::rectangle(*debug, bbox, cv::Scalar(0, 255, 255), 2);
-        cv::circle(*debug, center_px, 4, cv::Scalar(0, 0, 255), -1);
+        cv::rectangle(*debug, bbox, {0, 255, 255}, 2);
+        cv::circle(*debug, center_px, 4, {0, 0, 255}, -1);
         cv::putText(*debug, cv::format("(%.1f, %.1f)", center_px.x, center_px.y),
                     {bbox.x, std::max(0, bbox.y - 8)}, cv::FONT_HERSHEY_SIMPLEX, 0.5,
-                    cv::Scalar(255, 255, 255), 1);
+                    {255, 255, 255}, 1);
     }
     return true;
 }

@@ -86,7 +86,12 @@ void CameraPublisher::stop() {
 
 bool CameraPublisher::is_running() const { return _running.load(); }
 
-sensor_msgs::msg::Image CameraPublisher::get_image_buf() { return _img_msg_buf; }
+sensor_msgs::msg::Image::ConstSharedPtr CameraPublisher::get_latest_iamge_msg() {
+    std::lock_guard<std::mutex> lk(_latest_mtx);
+    return latest_img_;
+}
+
+sensor_msgs::msg::CameraInfo CameraPublisher::get_camera_info_buf() { return _cam_info_buf; }
 
 CameraPublisher::~CameraPublisher() { stop(); }
 
@@ -126,8 +131,26 @@ void CameraPublisher::worker_loop() {
 
         if (config.IS_ROTATE) cv::rotate(frame, frame, cv::ROTATE_180);
 
+        // the delay compute start
         auto now = this->get_clock()->now();
-        fill_image_msg(_img_msg_buf, now, frame);
+
+        // preapare the image
+        auto msg = std::make_shared<sensor_msgs::msg::Image>();
+        msg->header.stamp = this->now();
+        msg->header.frame_id = "camera_optical_frame";
+        msg->height = frame.rows;
+        msg->width = frame.cols;
+        msg->encoding = sensor_msgs::image_encodings::BGR8;
+        msg->is_bigendian = false;
+        msg->step = frame.cols * 3;
+        msg->data.resize(size_t(msg->step) * msg->height);
+        std::memcpy(msg->data.data(), frame.data, msg->data.size());
+
+        {
+            std::lock_guard<std::mutex> lk(_latest_mtx);
+            latest_img_ = msg;
+        }
+
         _image_pub_->publish(_img_msg_buf);
 
         if (config.SHOW_CV_MONITOR_WINDOWS) {
@@ -136,6 +159,7 @@ void CameraPublisher::worker_loop() {
             _latest_frame_for_ui = std::move(cp);
         }
 
+        // the delay part
         auto end = this->now();
         auto ms_used = (end - start_tp).nanoseconds() / 1e6;
         time_stamps.push_back(ms_used);
@@ -175,7 +199,6 @@ void CameraPublisher::ui_loop() {
 }
 
 void CameraPublisher::publish_camera_info() {
-    sensor_msgs::msg::CameraInfo cam;
     cv::Mat K = (cv::Mat_<double>(3, 3) << 1557.2 / config.nBinning, 0.2065,
                  (638.7311 / config.nBinning) /
                      ((((double)config.sensor_width) / config.nBinning) / config.ROI_width),
@@ -186,28 +209,28 @@ void CameraPublisher::publish_camera_info() {
     cv::Mat D = (cv::Mat_<double>(1, 5) << -0.1295, 0.0804, 4.85E-04, 6.37E-04, 0.2375);
     cv::Mat P3x3 = getOptimalNewCameraMatrix(K, D, Size(config.ROI_width, config.ROI_height), 0);
 
-    cam.height = config.ROI_height;
-    cam.width = config.ROI_width;
-    cam.distortion_model = "plumb_bob";
+    _cam_info_buf.height = config.ROI_height;
+    _cam_info_buf.width = config.ROI_width;
+    _cam_info_buf.distortion_model = "plumb_bob";
 
-    cam.k = {K.at<double>(0, 0), K.at<double>(0, 1), K.at<double>(0, 2),
-             K.at<double>(1, 0), K.at<double>(1, 1), K.at<double>(1, 2),
-             K.at<double>(2, 0), K.at<double>(2, 1), K.at<double>(2, 2)};
+    _cam_info_buf.k = {K.at<double>(0, 0), K.at<double>(0, 1), K.at<double>(0, 2),
+                       K.at<double>(1, 0), K.at<double>(1, 1), K.at<double>(1, 2),
+                       K.at<double>(2, 0), K.at<double>(2, 1), K.at<double>(2, 2)};
 
-    cam.d = {D.at<double>(0, 0), D.at<double>(0, 1), D.at<double>(0, 2), D.at<double>(0, 3),
-             D.at<double>(0, 4)};
+    _cam_info_buf.d = {D.at<double>(0, 0), D.at<double>(0, 1), D.at<double>(0, 2),
+                       D.at<double>(0, 3), D.at<double>(0, 4)};
 
-    cam.p = {P3x3.at<double>(0, 0), P3x3.at<double>(0, 1), P3x3.at<double>(0, 2), 0.0,
-             P3x3.at<double>(1, 0), P3x3.at<double>(1, 1), P3x3.at<double>(1, 2), 0.0,
-             P3x3.at<double>(2, 0), P3x3.at<double>(2, 1), P3x3.at<double>(2, 2), 1.0};
+    _cam_info_buf.p = {P3x3.at<double>(0, 0), P3x3.at<double>(0, 1), P3x3.at<double>(0, 2), 0.0,
+                       P3x3.at<double>(1, 0), P3x3.at<double>(1, 1), P3x3.at<double>(1, 2), 0.0,
+                       P3x3.at<double>(2, 0), P3x3.at<double>(2, 1), P3x3.at<double>(2, 2), 1.0};
 
-    cam.r = {1, 0, 0, 0, 1, 0, 0, 0, 1};
-    cam.binning_x = 0;
-    cam.binning_y = 0;
+    _cam_info_buf.r = {1, 0, 0, 0, 1, 0, 0, 0, 1};
+    _cam_info_buf.binning_x = 0;
+    _cam_info_buf.binning_y = 0;
 
-    cam.header.stamp = this->get_clock()->now();
-    cam.header.frame_id = "camera_optical_frame";
-    _camera_info_pub_->publish(cam);
+    _cam_info_buf.header.stamp = this->get_clock()->now();
+    _cam_info_buf.header.frame_id = "camera_optical_frame";
+    _camera_info_pub_->publish(_cam_info_buf);
 }
 
 void CameraPublisher::_prepare_image_msg() {
@@ -218,17 +241,4 @@ void CameraPublisher::_prepare_image_msg() {
     _img_msg_buf.is_bigendian = false;
     _img_msg_buf.step = static_cast<sensor_msgs::msg::Image::_step_type>(_img_msg_buf.width * 3);
     _img_msg_buf.data.resize(_img_msg_buf.step * _img_msg_buf.height);
-}
-
-void CameraPublisher::fill_image_msg(sensor_msgs::msg::Image &msg, const rclcpp::Time &stamp,
-                                     const cv::Mat &bgr) {
-    msg.header.stamp = stamp;
-
-    if (bgr.cols != (int)msg.width || bgr.rows != (int)msg.height || bgr.type() != CV_8UC3) {
-        msg.width = bgr.cols;
-        msg.height = bgr.rows;
-        msg.step = msg.width * 3;
-        msg.data.resize(msg.step * msg.height);
-    }
-    std::memcpy(msg.data.data(), bgr.data, msg.step * msg.height);
 }

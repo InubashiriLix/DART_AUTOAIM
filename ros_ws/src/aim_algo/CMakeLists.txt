@@ -34,6 +34,7 @@ add_executable(aim_algo
     src/camera/CamWrapper.cpp
     src/camera/CamNode.cc
     src/detector.cc
+    src/cv_utils.cc
     src/kalman.cc
     src/tracker.cc
     src/main.cc

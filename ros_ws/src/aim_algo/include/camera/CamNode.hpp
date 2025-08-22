@@ -14,13 +14,14 @@ class Mat;
 
 class CameraPublisher : public rclcpp::Node {
    public:
-    CameraPublisher(int /*argc*/, char ** /*argv*/);
+    CameraPublisher(int /*argc*/, char** /*argv*/);
 
     bool start();
     void stop();
     bool is_running() const;
 
-    sensor_msgs::msg::Image get_image_buf();
+    sensor_msgs::msg::Image::ConstSharedPtr get_latest_iamge_msg();
+    sensor_msgs::msg::CameraInfo get_camera_info_buf();
 
     ~CameraPublisher() override;
 
@@ -37,14 +38,14 @@ class CameraPublisher : public rclcpp::Node {
 
     // UI 最新帧
     std::shared_ptr<cv::Mat> _latest_frame_for_ui;
+    std::shared_ptr<sensor_msgs::msg::Image> latest_img_;
 
     sensor_msgs::msg::Image _img_msg_buf;
+    sensor_msgs::msg::CameraInfo _cam_info_buf;
 
     void welcom();
     void worker_loop();
     void ui_loop();
     void publish_camera_info();
     void _prepare_image_msg();
-    void fill_image_msg(sensor_msgs::msg::Image &msg, const rclcpp::Time &stamp,
-                        const cv::Mat &bgr);
 };

@@ -1,26 +1,54 @@
 #include "detector.hpp"
 
-Detector::Detector(CameraPublisher&& cam_node)
-    : Node("detector_bus_thread", rclcpp::NodeOptions().use_intra_process_comms(true)) {
+Detector::Detector(std::shared_ptr<CameraPublisher> cam_node)
+    : Node("detector_bus_thread", rclcpp::NodeOptions().use_intra_process_comms(true)),
+      _cam_node(cam_node) {
     this->_center_x = _config.center_x;
     this->_center_y = _config.center_y;
     this->_cam_qos_keep_last = _config.camera_qos_keep_last;
+    this->wl_ = WhiteLampParams();
 
-    _th_worker = std::thread([this] { detector_worker(); });
-    _th_kf = std::thread([this] { kf_worker(); });
+    init_white_lamp_detector(this->wl_);
 
     welcom();
 }
 
 void Detector::detector_worker() {
     while (_running.load(std::memory_order_relaxed)) {
-        //
+        // lock the mutex for the img msg first
+        auto img = _cam_node->get_latest_iamge_msg();
+        if (!img) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            continue;
+        }
+        auto cv_ptr = cv_bridge::toCvCopy(img, sensor_msgs::image_encodings::BGR8);
+        const cv::Mat& frame = cv_ptr->image;
+
+        cv::Point2f center_px = cv::Point2f(0, 0);
+        cv::Rect bbox;
+        bool find = detect_white_lamp(frame, center_px, bbox, &_ui_frame);
+    }
+}
+
+void Detector::ui_worker() {
+    while (_running.load(std::memory_order_relaxed)) {
+        if (_ui_frame.empty()) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            continue;
+        }
+
+        cv::Mat ui_frame = _ui_frame.clone();
+        if (_config.SHOW_CV_MONITOR_WINDOWS) {
+            cv::imshow("Detector UI", ui_frame);
+            cv::waitKey(1);
+        } else {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
     }
 }
 
 void Detector::kf_worker() {
     while (_running.load(std::memory_order_relaxed)) {
-        //
     }
 }
 
@@ -36,6 +64,8 @@ bool Detector::start() {
     _th_worker = std::thread([this] { this->detector_worker(); });
     _th_kf = std::thread([this] { this->kf_worker(); });
     _th_commu = std::thread([this] { this->commu_worker(); });
+
+    if (_config.SHOW_CV_MONITOR_WINDOWS) _th_ui = std::thread([this] { this->ui_worker(); });
 
     _running.store(true);
     return true;

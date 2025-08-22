@@ -50,11 +50,13 @@ bool Detector::detect_white_lamp(const cv::Mat& bgr, cv::Point2f& center_px, cv:
             best = i;
         }
     }
-    if (best < 0 && !debug) return false;
+    // if (best < 0 && !debug) return false;
+    if (best < 0) return false;
 
     // 计算中心（质心比矩形中心稳）
     cv::Moments m = cv::moments(contours[best]);
-    if (m.m00 <= 1e-3 && !debug) return false;
+    // if (m.m00 <= 1e-3 && !debug) return false;
+    if (m.m00 <= 1e-3) return false;
 
     center_px = cv::Point2f(float(m.m10 / m.m00), float(m.m01 / m.m00));
     bbox = cv::boundingRect(contours[best]);

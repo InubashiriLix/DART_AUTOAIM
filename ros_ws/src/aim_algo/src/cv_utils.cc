@@ -4,11 +4,12 @@ void Detector::init_white_lamp_detector(const WhiteLampParams& p) {
     wl_ = p;
     if (wl_.k_open.area() > 0) kOpen_ = cv::getStructuringElement(cv::MORPH_RECT, wl_.k_open);
     if (wl_.k_close.area() > 0) kClose_ = cv::getStructuringElement(cv::MORPH_RECT, wl_.k_close);
+    time_stamps.clear();
 }
 
 // 纯检测：返回是否找到；输出 center_px（像素坐标）与 bbox
 bool Detector::detect_white_lamp(const cv::Mat& bgr, cv::Point2f& center_px, cv::Rect& bbox,
-                                 cv::Mat* debug /*可选，传入则画可视化*/) {
+                                 cv::Mat* debug) {
     // 颜色空间与通道
     cv::cvtColor(bgr, ycrcb_, cv::COLOR_BGR2YCrCb);
     cv::Mat ch[3];
@@ -49,11 +50,11 @@ bool Detector::detect_white_lamp(const cv::Mat& bgr, cv::Point2f& center_px, cv:
             best = i;
         }
     }
-    if (best < 0) return false;
+    if (best < 0 && !debug) return false;
 
     // 计算中心（质心比矩形中心稳）
     cv::Moments m = cv::moments(contours[best]);
-    if (m.m00 <= 1e-3) return false;
+    if (m.m00 <= 1e-3 && !debug) return false;
 
     center_px = cv::Point2f(float(m.m10 / m.m00), float(m.m01 / m.m00));
     bbox = cv::boundingRect(contours[best]);

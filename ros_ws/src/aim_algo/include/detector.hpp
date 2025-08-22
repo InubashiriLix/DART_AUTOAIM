@@ -84,6 +84,7 @@ class Detector : public rclcpp::Node {
     cv::Mat _ui_frame;
 
     // aim cv functions and configs
+    std::vector<double> time_stamps;
     void init_white_lamp_detector(const WhiteLampParams& p);
     bool detect_white_lamp(const cv::Mat& bgr, cv::Point2f& center_px, cv::Rect& bbox,
                            cv::Mat* debug /*可选，传入则画可视化*/);

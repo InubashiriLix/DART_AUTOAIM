@@ -64,6 +64,8 @@ struct detector_config {
     int camera_qos_keep_last;
     int center_x;
     int center_y;
+    bool SHOW_CV_CAL_DELAY;
+    int avg_frame_delay_num = 300;
 
     detector_config(
         const std::string toml_abs_path_str = "/home/orangepi/08_DART_AUTOAIM/ros_ws/config.toml") {
@@ -78,6 +80,10 @@ struct detector_config {
 
             center_x = (*detector)["center_x"].value_or(512);
             center_y = (*detector)["center_y"].value_or(384);
+
+            SHOW_CV_CAL_DELAY = (*detector)["SHOW_CV_CAL_DELAY"].value_or(false);
+            avg_frame_delay_num = (*detector)["avg_frame_delay_num"].value_or(300);
+
         } catch (const std::out_of_range& e) {
             // Handle missing key
             std::cerr << "Missing key: " << e.what() << std::endl;

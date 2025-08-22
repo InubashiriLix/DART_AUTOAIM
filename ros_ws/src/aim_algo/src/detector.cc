@@ -15,6 +15,7 @@ Detector::Detector(std::shared_ptr<CameraPublisher> cam_node)
 
 void Detector::detector_worker() {
     while (_running.load(std::memory_order_relaxed)) {
+        auto start_tp = this->now();
         // lock the mutex for the img msg first
         auto img = _cam_node->get_latest_iamge_msg();
         if (!img) {
@@ -27,7 +28,20 @@ void Detector::detector_worker() {
         cv::Point2f center_px = cv::Point2f(0, 0);
         cv::Rect bbox;
         bool find = detect_white_lamp(frame, center_px, bbox, &_ui_frame);
-        if (find) RCLCPP_INFO(this->get_logger(), "find");
+
+        // delay
+        if (_config.SHOW_CV_CAL_DELAY) {
+            auto end = this->now();
+            auto ms_used = (end - start_tp).nanoseconds() / 1e6;
+            time_stamps.push_back(ms_used);
+            if (time_stamps.size() >= _config.avg_frame_delay_num) {
+                double sum = std::accumulate(time_stamps.begin(), time_stamps.end(), 0.0);
+                double delay_avg = sum / time_stamps.size();
+                RCLCPP_INFO(this->get_logger(), "[frame detector] avg %d frame delay: %.3f ms",
+                            _config.avg_frame_delay_num, delay_avg);
+                time_stamps.clear();
+            }
+        }
     }
 }
 
@@ -94,5 +108,7 @@ void Detector::welcom() {
     std::cout << "SHOW CV MONITOR: " << _config.SHOW_CV_MONITOR_WINDOWS << std::endl;
     std::cout << "CENTER_X: " << _config.center_x << std::endl;
     std::cout << "CENTER_Y: " << _config.center_y << std::endl;
+    std::cout << "SHOW_CV_CAL_DELAY: " << _config.SHOW_CV_CAL_DELAY << std::endl;
+    std::cout << "avg_frame_delay_num: " << _config.avg_frame_delay_num << std::endl;
     std::cout << "=========== configs end ============" << std::endl;
 }

@@ -9,8 +9,32 @@ Detector::Detector(std::shared_ptr<CameraPublisher> cam_node)
     this->wl_ = WhiteLampParams();
 
     init_white_lamp_detector(this->wl_);
+    prepare_cam_geometry();
 
     welcom();
+}
+
+void Detector::prepare_cam_geometry() {
+    _cam_geo.rectified = false;
+    _cam_geo.K = _cam_node->get_cam_info_k().clone();
+    _cam_geo.D = _cam_node->get_cam_info_d().clone();
+    _cam_geo.image_width = _cam_node->config.ROI_width;
+    _cam_geo.image_height = _cam_node->config.ROI_height;
+
+    auto deg2rad = [](double d) { return d * CV_PI / 180.0; };
+    // TODO: you may want to set the offset in the toml config
+    double alpha_deg = 0.0;  // pitch 偏置
+    double beta_deg = 0.0;   // yaw 偏置
+    cv::Mat Rx, Rz;
+    {
+        cv::Mat rvecX = (cv::Mat_<double>(3, 1) << deg2rad(alpha_deg), 0, 0);
+        cv::Mat rvecZ = (cv::Mat_<double>(3, 1) << 0, 0, deg2rad(beta_deg));
+        cv::Rodrigues(rvecX, Rx);
+        cv::Rodrigues(rvecZ, Rz);
+    }
+    _cam_geo.R_cam2gimbal = Rz * Rx;
+
+    _cam_geo.print();
 }
 
 void Detector::detector_worker() {
@@ -26,8 +50,17 @@ void Detector::detector_worker() {
         const cv::Mat& frame = cv_ptr->image;
 
         cv::Point2f center_px = cv::Point2f(0, 0);
+        double yaw_deg = 0, pitch_deg = 0;
         cv::Rect bbox;
         bool find = detect_white_lamp(frame, center_px, bbox, &_ui_frame);
+        if (find) {
+            if (_cam_geo.pixelToYawPitchDeg(center_px, yaw_deg, pitch_deg)) {
+                std::cout << "Pixel (" << center_px.x << "," << center_px.y
+                          << ") => yaw=" << yaw_deg << " deg, pitch=" << pitch_deg << " deg\n";
+            } else {
+                std::cout << "Failed to compute yaw/pitch\n";
+            }
+        }
 
         // delay
         if (_config.SHOW_CV_CAL_DELAY) {
@@ -80,6 +113,8 @@ bool Detector::start() {
     _running.store(true);
 
     _th_worker = std::thread([this] { this->detector_worker(); });
+
+    _kf = KalmanDelayAware("/home/orangepi/08_DART_AUTOAIM/ros_ws/config.toml", "kalman");
     _th_kf = std::thread([this] { this->kf_worker(); });
     _th_commu = std::thread([this] { this->commu_worker(); });
 

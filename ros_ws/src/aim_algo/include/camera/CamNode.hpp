@@ -3,11 +3,13 @@
 #include <atomic>
 #include <memory>
 #include <mutex>
+#include <opencv2/opencv.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/camera_info.hpp>
 #include <sensor_msgs/msg/image.hpp>
 #include <thread>
 
+#include "config_parser.hpp"
 namespace cv {
 class Mat;
 }
@@ -27,10 +29,22 @@ class CameraPublisher : public rclcpp::Node {
 
     std::mutex _latest_mtx;
 
+    const cv::Mat get_cam_info_k();
+    const cv::Mat get_cam_info_d();
+    const cv::Mat get_cam_info_p3x3();
+
+    camera_config config;
+
    private:
     rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr _image_pub_;
     rclcpp::Publisher<sensor_msgs::msg::CameraInfo>::SharedPtr _camera_info_pub_;
     rclcpp::TimerBase::SharedPtr _info_timer_;
+
+    // the camera info should be shared
+    void prepare_cam_info();
+    cv::Mat K;
+    cv::Mat D;
+    cv::Mat P3x3;
 
     std::thread _th_worker;
     std::thread _th_ui;

@@ -15,6 +15,9 @@ nBinning = 1
 FPS = 60.0
 # how many frames to average for delay calculation
 avg_frame_delay_num = 300
+# whether publish the msg
+publish_image_msg = false
+publish_camera_info_msg = false
 
 
 [detector]
@@ -25,3 +28,31 @@ center_y = 384
 # how many frames to average for delay calculation
 SHOW_CV_CAL_DELAY = true
 avg_frame_delay_num = 300
+
+
+[kalman]
+
+# 输出整形
+[kalman.output]
+kp = 1.0            # 位置误差比例系数
+kv = 0.05           # 速度前馈/阻尼
+preview_ms = 50.0   # 预瞄时间（ms）
+deadband_deg = 0.03 # 输出死区（°）
+max_step_deg = 0.8  # 单次指令最大步进（°）
+
+# 过程噪声 / 初值
+[kalman.process]
+sigma_a_pitch = 1.6 # pitch 白噪声加速度 1σ (deg/s^2)
+sigma_a_yaw = 1.0   # yaw   白噪声加速度 1σ (deg/s^2)
+p0_angle = 1.0      # 初始角度方差
+p0_rate = 4.0       # 初始角速度方差
+
+# 量测噪声与门限
+[kalman.measurement]
+r_pitch = 0.25   # 量测方差（deg^2），~ 0.5° 1σ
+r_yaw = 0.25
+chi2_gate = -1.0 # 卡方门限：-1 关闭；5.99(95%)；9.21(99%)
+
+# 时序（延迟）
+[kalman.timing]
+vision_latency_ms = 13.0 # 视觉延迟估计（ms）

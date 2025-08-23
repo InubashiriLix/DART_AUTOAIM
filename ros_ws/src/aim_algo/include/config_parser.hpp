@@ -17,6 +17,9 @@ struct camera_config {
     int nBinning = 1;
     float FPS = 100.0;
 
+    bool publish_image_msg = true;
+    bool publish_camera_info = true;
+
     int avg_frame_delay_num = 300;
 
     camera_config(
@@ -49,6 +52,10 @@ struct camera_config {
             FPS = static_cast<float>((*cam)["FPS"].value_or(double{FPS}));
             avg_frame_delay_num = static_cast<double>(
                 (*cam)["avg_frame_delay_num"].value_or(int{avg_frame_delay_num}));
+
+            publish_image_msg = (*cam)["publish_image_msg"].value_or(publish_image_msg);
+            publish_camera_info = (*cam)["publish_camera_info"].value_or(publish_camera_info);
+
         } catch (const std::out_of_range& e) {
             // Handle missing key
             std::cerr << "Missing key: " << e.what() << std::endl;

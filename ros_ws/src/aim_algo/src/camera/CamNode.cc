@@ -8,7 +8,6 @@
 
 #include "camera/CamWrapper.h"
 #include "camera/CamWrapperDH.h"
-#include "config_parser.hpp"
 #include "cv_bridge/cv_bridge.h"
 #include "sensor_msgs/image_encodings.hpp"
 #include "std_msgs/msg/header.hpp"
@@ -17,11 +16,12 @@ using namespace std;
 using namespace cv;
 using namespace std::chrono_literals;
 
-static auto config = camera_config();
 static Camera *camera = nullptr;
 
 CameraPublisher::CameraPublisher(int /*argc*/, char ** /*argv*/)
     : Node("camera_publisher", rclcpp::NodeOptions().use_intra_process_comms(true)) {
+    this->config = camera_config();
+    prepare_cam_info();
     _image_pub_ = this->create_publisher<sensor_msgs::msg::Image>(
         declare_parameter<std::string>("camera_topic", "image_raw"),
         rclcpp::SensorDataQoS().keep_last(1).best_effort());
@@ -36,8 +36,27 @@ CameraPublisher::CameraPublisher(int /*argc*/, char ** /*argv*/)
     _camera_info_pub_ =
         this->create_publisher<sensor_msgs::msg::CameraInfo>("camera_info", qos_info, info_opts);
 
-    _info_timer_ =
-        this->create_wall_timer(100ms, std::bind(&CameraPublisher::publish_camera_info, this));
+    if (config.publish_camera_info)
+        _info_timer_ =
+            this->create_wall_timer(100ms, std::bind(&CameraPublisher::publish_camera_info, this));
+    else {
+        this->declare_parameter("publish_camera_info", false);
+    }
+}
+
+void CameraPublisher::prepare_cam_info() {
+    int nBinning = config.nBinning;
+    int sensor_w = config.sensor_width;
+    int sensor_h = config.sensor_height;
+    int ROI_w = config.ROI_width;
+    int ROI_h = config.ROI_height;
+    K = (cv::Mat_<double>(3, 3) << /*0*/ 1557.2 / nBinning, /*1*/ 0.2065,
+         /*2*/ (638.7311 / nBinning) / ((double(sensor_w) / nBinning) / ROI_w), /*3*/ 0,
+         /*4*/ 1557.5 / nBinning,
+         /*5*/ (515.1176 / nBinning) / ((double(sensor_h) / nBinning) / ROI_h), /*6*/ 0, /*7*/ 0,
+         /*8*/ 1);
+    this->D = (cv::Mat_<double>(1, 5) << -0.1295, 0.0804, 4.85E-04, 6.37E-04, 0.2375);
+    this->P3x3 = getOptimalNewCameraMatrix(K, D, Size(config.ROI_width, config.ROI_height), 0);
 }
 
 bool CameraPublisher::start() {
@@ -112,7 +131,10 @@ void CameraPublisher::welcom() {
     std::cout << "\nROI_width: " << config.ROI_width << "\nROI_height: " << config.ROI_height
               << "\nsensor_width: " << config.sensor_width
               << "\nsensor_height: " << config.sensor_height << "\nnBinning: " << config.nBinning
-              << "\nFPS: " << config.FPS << "\n======== end for configs =========\n";
+              << "\nFPS: " << config.FPS
+              << "\npublish_image_msg: " << (config.publish_image_msg ? "true" : "false")
+              << "\npublish_camera_info:" << (config.publish_camera_info ? " true " : " false ")
+              << "\n======== end for configs =========\n";
 }
 
 void CameraPublisher::worker_loop() {
@@ -150,7 +172,7 @@ void CameraPublisher::worker_loop() {
             latest_img_ = msg;
         }
 
-        _image_pub_->publish(_img_msg_buf);
+        if (config.publish_image_msg) _image_pub_->publish(_img_msg_buf);
 
         if (config.SHOW_CV_MONITOR_WINDOWS) {
             auto cp = std::make_shared<cv::Mat>(frame);
@@ -198,16 +220,6 @@ void CameraPublisher::ui_loop() {
 }
 
 void CameraPublisher::publish_camera_info() {
-    cv::Mat K = (cv::Mat_<double>(3, 3) << 1557.2 / config.nBinning, 0.2065,
-                 (638.7311 / config.nBinning) /
-                     ((((double)config.sensor_width) / config.nBinning) / config.ROI_width),
-                 0, 1557.5 / config.nBinning,
-                 (515.1176 / config.nBinning) /
-                     ((((double)config.sensor_height) / config.nBinning) / config.ROI_height),
-                 0, 0, 1);
-    cv::Mat D = (cv::Mat_<double>(1, 5) << -0.1295, 0.0804, 4.85E-04, 6.37E-04, 0.2375);
-    cv::Mat P3x3 = getOptimalNewCameraMatrix(K, D, Size(config.ROI_width, config.ROI_height), 0);
-
     _cam_info_buf.height = config.ROI_height;
     _cam_info_buf.width = config.ROI_width;
     _cam_info_buf.distortion_model = "plumb_bob";
@@ -224,6 +236,7 @@ void CameraPublisher::publish_camera_info() {
                        P3x3.at<double>(2, 0), P3x3.at<double>(2, 1), P3x3.at<double>(2, 2), 1.0};
 
     _cam_info_buf.r = {1, 0, 0, 0, 1, 0, 0, 0, 1};
+
     _cam_info_buf.binning_x = 0;
     _cam_info_buf.binning_y = 0;
 
@@ -231,6 +244,10 @@ void CameraPublisher::publish_camera_info() {
     _cam_info_buf.header.frame_id = "camera_optical_frame";
     _camera_info_pub_->publish(_cam_info_buf);
 }
+
+const cv::Mat CameraPublisher::get_cam_info_k() { return this->K.clone(); }
+const cv::Mat CameraPublisher::get_cam_info_d() { return this->D.clone(); }
+const cv::Mat CameraPublisher::get_cam_info_p3x3() { return this->P3x3.clone(); }
 
 void CameraPublisher::_prepare_image_msg() {
     _img_msg_buf.header.frame_id = "camera_optical_frame";

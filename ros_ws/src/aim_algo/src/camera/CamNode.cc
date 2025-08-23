@@ -11,6 +11,7 @@
 #include "cv_bridge/cv_bridge.h"
 #include "sensor_msgs/image_encodings.hpp"
 #include "std_msgs/msg/header.hpp"
+#include "utils/logging.hpp"
 
 using namespace std;
 using namespace cv;

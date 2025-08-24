@@ -13,7 +13,7 @@ find_package(rclcpp REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(cv_bridge REQUIRED)
-
+# cus dependencies
 find_package(OpenCV REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(spdlog REQUIRED)
@@ -34,12 +34,17 @@ endif()
 include_directories(${OpenCV_INCLUDE_DIRS})
 
 add_executable(aim_algo
+    # dahen camera support
     src/camera/CamWrapper.cpp
     src/camera/CamNode.cc
+    # dahen camera pixel 2 angle and other tools
     src/camera/CamGeo.cc
+    # autoaim detector
     src/detector.cc
     src/cv_utils.cc
+    # kalman with delay awareness
     src/kalman.cc
+    # main entrance
     src/main.cc
 )
 

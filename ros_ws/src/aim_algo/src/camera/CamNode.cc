@@ -165,24 +165,30 @@ void CameraPublisher::welcom() {
 }
 
 void CameraPublisher::worker_loop() {
+    using clock_t = std::chrono::steady_clock;
+    const auto period = std::chrono::milliseconds(8);  // = 100 Hz 上限
+
     cv::Mat frame;
     std::vector<double> time_stamps;
     time_stamps.reserve(512);
 
+    auto next_tick = clock_t::now();  // 首次基准
+
+    // 可选：减少积压（如果驱动支持，建议把缓冲设小）
+    // if (camera) { camera->set(cv::CAP_PROP_BUFFERSIZE, 1); }
+
     while (_running.load(std::memory_order_relaxed)) {
-        auto start_tp = this->now();
+        auto start_tp_ros = this->now();
+        auto start_tp_steady = clock_t::now();
 
         if (!camera->read(frame) || frame.empty()) {
-            std::this_thread::sleep_for(1ms);
+            next_tick = start_tp_steady + period;
+            std::this_thread::sleep_until(next_tick);
             continue;
         }
 
         if (config.IS_ROTATE) cv::rotate(frame, frame, cv::ROTATE_180);
 
-        // the delay compute start
-        auto now = this->get_clock()->now();
-
-        // preapare the image
         auto msg = std::make_shared<sensor_msgs::msg::Image>();
         msg->header.stamp = this->now();
         msg->header.frame_id = "camera_optical_frame";
@@ -191,34 +197,39 @@ void CameraPublisher::worker_loop() {
         msg->encoding = sensor_msgs::image_encodings::BGR8;
         msg->is_bigendian = false;
         msg->step = frame.cols * 3;
-        msg->data.resize(size_t(msg->step) * msg->height);
+        msg->data.resize(static_cast<size_t>(msg->step) * msg->height);
         std::memcpy(msg->data.data(), frame.data, msg->data.size());
 
         {
             std::lock_guard<std::mutex> lk(_latest_mtx);
             latest_img_ = msg;
+
+            if (config.SHOW_CV_MONITOR_WINDOWS) {
+                _latest_frame_for_ui = std::make_shared<cv::Mat>(frame);
+            }
         }
 
-        if (config.publish_image_msg) _image_pub_->publish(_img_msg_buf);
-
-        if (config.SHOW_CV_MONITOR_WINDOWS) {
-            auto cp = std::make_shared<cv::Mat>(frame);
-            std::lock_guard<std::mutex> lk(_latest_mtx);
-            _latest_frame_for_ui = std::move(cp);
+        if (config.publish_image_msg) {
+            _image_pub_->publish(*msg);
         }
 
-        // the delay part
-        auto end = this->now();
-        auto ms_used = (end - start_tp).nanoseconds() / 1e6;
+        auto end_ros = this->now();
+        double ms_used = (end_ros - start_tp_ros).nanoseconds() / 1e6;
         time_stamps.push_back(ms_used);
         if (time_stamps.size() >= config.avg_frame_delay_num) {
             double sum = std::accumulate(time_stamps.begin(), time_stamps.end(), 0.0);
             double delay_avg = sum / time_stamps.size();
             _cam_log->info("[frame camera] avg {} frame delay: {:.3f} ms",
                            config.avg_frame_delay_num, delay_avg);
-            // RCLCPP_INFO(this->get_logger(), "avg %d frame delay: %.3f ms",
-            //             config.avg_frame_delay_num, delay_avg);
             time_stamps.clear();
+        }
+
+        next_tick += period;
+        auto now_steady = clock_t::now();
+        if (now_steady < next_tick) {
+            std::this_thread::sleep_until(next_tick);
+        } else if (now_steady - next_tick > period) {
+            next_tick = now_steady;
         }
     }
 }

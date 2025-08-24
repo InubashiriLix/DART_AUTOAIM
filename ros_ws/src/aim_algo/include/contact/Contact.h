@@ -7,7 +7,7 @@
 #include <string>
 #include <thread>
 
-#include "config_parser.hpp";
+#include "config_parser.hpp"
 #include "contact/CommPort.h"
 #include "contact/Protocol.h"
 

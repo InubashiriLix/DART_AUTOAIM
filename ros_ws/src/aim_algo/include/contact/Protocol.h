@@ -2,7 +2,7 @@
 
 #include <cstdint>
 
-typedef struct ProjectileRx {
+struct ProjectileRx {
     uint8_t header;  // 0xA3 for InfantryDL
     float roll;
     float pitch;
@@ -15,8 +15,7 @@ typedef struct ProjectileRx {
     uint8_t EOF_;  // 0xAA for InfantryDL // EOF_ not EOF (variable name)
 } __attribute__((packed));
 
-
-typedef struct ProjectileTx {
+struct ProjectileTx {
     // WARNING:: the found, patrolling, done_fitting, is_updated are not clear
     uint8_t header;  // 0xA3 for InfantryDL
     float pitch;

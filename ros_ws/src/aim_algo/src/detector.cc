@@ -120,9 +120,11 @@ void Detector::contact_worker() {
         ProjectileRx rx;
         if (_contact_.latest_rx(rx)) {
             _contact_log->info(
-                "latest rx: pitch {:.2f} deg, yaw {:.2f} deg, quaternion [{:.2f}, {:.2f}, {:.2f}, "
+                "latest rx: pitch {} deg, yaw {} deg, quaternion [{:.2f}, {:.2f}, {:.2f}, "
                 "{:.2f}]",
-                rx.pitch, rx.yaw, rx.q[0], rx.q[1], rx.q[2], rx.q[3]);
+                static_cast<float>(rx.pitch), static_cast<float>(rx.yaw),
+                static_cast<float>(rx.q[0]), static_cast<float>(rx.q[1]),
+                static_cast<float>(rx.q[2]), static_cast<float>(rx.q[3]));
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }

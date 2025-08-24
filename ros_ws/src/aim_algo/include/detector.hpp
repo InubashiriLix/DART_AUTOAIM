@@ -18,6 +18,8 @@
 #include "camera/CamGeo.hpp"
 #include "camera/CamNode.hpp"
 #include "config_parser.hpp"
+#include "contact/Contact.h"
+#include "contact/Protocol.h"
 #include "kalman/kalman_delay_aware.hpp"
 #include "utils/Semaphore.hpp"
 #include "utils/logging.hpp"
@@ -70,6 +72,8 @@ class Detector : public rclcpp::Node {
     std::shared_ptr<spdlog::logger> _detector_log;
 
     // =================== kalman filter with delay aware ==============================
+    // logger
+    std::shared_ptr<spdlog::logger> _kalman_log;
     // the kalman class
     KalmanDelayAware _kf;
     // the msg queue for kalman
@@ -79,12 +83,18 @@ class Detector : public rclcpp::Node {
     // the thread for kalman filter
     std::thread _th_kf;
     void kf_worker();
-    // logger
-    std::shared_ptr<spdlog::logger> _kalman_log;
 
     // ========================= commu lower machine thread ============================
-    std::thread _th_commu;
-    void commu_worker();
+    // logger
+    std::shared_ptr<spdlog::logger> _contact_log;
+    // the contact object
+    contact_config contact_conf;
+    Contact _contact_;
+    // tools
+    bool prepare_contact();
+    // threads
+    std::thread _th_contact;
+    void contact_worker();
 
     // ================================ ui display thread ==============================
     cv::Mat _ui_frame;

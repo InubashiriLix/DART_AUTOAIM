@@ -33,6 +33,8 @@ endif()
 
 include_directories(${OpenCV_INCLUDE_DIRS})
 
+add_subdirectory(serial/lib)
+
 add_executable(aim_algo
     # dahen camera support
     src/camera/CamWrapper.cpp
@@ -44,6 +46,11 @@ add_executable(aim_algo
     src/cv_utils.cc
     # kalman with delay awareness
     src/kalman.cc
+    # contact
+    src/contact/Checksum.cc
+    src/contact/CommPort.cc
+    src/contact/Contact.cc
+    src/contact/readtoml.cc
     # main entrance
     src/main.cc
 )
@@ -61,6 +68,7 @@ include_directories(
 
 target_link_libraries(aim_algo
     ${OpenCV_LIBS}
+    serial
     Eigen3::Eigen
     spdlog::spdlog
     fmt::fmt

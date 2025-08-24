@@ -7,7 +7,7 @@ int main(int argc, char **argv) {
     perflog::init({{"detector", "logs/detector.log"},
                    {"cam", "logs/cam.log"},
                    {"kalman", "logs/kalman.log"},
-                   {"commu", "logs/commu.log"}});
+                   {"contact", "logs/contact.log"}});
 
     rclcpp::init(argc, argv);
 

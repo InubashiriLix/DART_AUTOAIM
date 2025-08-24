@@ -1,13 +1,24 @@
 #include "detector.hpp"
 
+#include "contact/Protocol.h"
+
+// #include <boost/iterator/iterator_categories.hpp>
+
 Detector::Detector(std::shared_ptr<CameraPublisher> cam_node)
     : Node("detector_bus_thread", rclcpp::NodeOptions().use_intra_process_comms(true)),
-      _cam_node(cam_node) {
+      _cam_node(cam_node),
+      contact_conf(contact_config()),
+      _contact_(contact_conf) {
+    // the loggers
     this->_detector_log = perflog::get("detector");
     this->_cam_log = perflog::get("cam");
+    this->_contact_log = perflog::get("contact");
+    this->_kalman_log = perflog::get("kalman");
+    // NOTE: maybe I should remove them
     this->_center_x = _config.center_x;
     this->_center_y = _config.center_y;
     this->_cam_qos_keep_last = _config.camera_qos_keep_last;
+
     this->wl_ = WhiteLampParams();
 
     init_white_lamp_detector(this->wl_);
@@ -104,10 +115,42 @@ void Detector::kf_worker() {
     }
 }
 
-void Detector::commu_worker() {
+void Detector::contact_worker() {
     while (_running.load(std::memory_order_relaxed)) {
+        // ProjectileRx rx;
+        // if (_contact_.latest_rx(rx))
+
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
+}
+
+bool Detector::prepare_contact() {
+    _contact_log->info("prepare contact...");
+    _contact_log->info("=============== configs ================");
+    _contact_log->info("serial_dev: {}", contact_conf.serial_dev);
+    _contact_log->info("baud: {}", contact_conf.baud);
+    _contact_log->info("rate_hz: {}", contact_conf.rate_hz);
+    _contact_log->info("pitch_min_deg: {}", contact_conf.pitch_min_deg);
+    _contact_log->info("pitch_max_deg: {}", contact_conf.pitch_max_deg);
+    _contact_log->info("wrap_yaw_deg: {}", contact_conf.wrap_yaw_deg);
+    _contact_log->info("header: 0x{:X}", contact_conf.header);
+    _contact_log->info("require_rx_before_send: {}", contact_conf.require_rx_before_send);
+    _contact_log->info("========================================");
+    // start the contact inter thread here
+    if (!_contact_.start(
+            true)) {  // spawn_thread set as true here, so that we don't need to call run() to block
+        RCLCPP_ERROR(this->get_logger(), "contact start failed");
+        _detector_log->error("contact start failed");
+        _contact_log->error("contact start failed");
+        _running.store(false);
+        return false;
+    }
+
+    _contact_log->info("",
+                       "░█░░░█▀█░█▀▀░░░█▀▀░█▀█░█▀█░▀█▀░█▀█░█▀▀░▀█▀\n"
+                       "░█░░░█░█░▀▀█░░░█░░░█░█░█░█░░█░░█▀█░█░░░░█░\n"
+                       "░▀▀▀░▀▀▀░▀▀▀░░░▀▀▀░▀▀▀░▀░▀░░▀░░▀░▀░▀▀▀░░▀░\n");
+    return true;
 }
 
 bool Detector::start() {
@@ -115,15 +158,19 @@ bool Detector::start() {
 
     _running.store(true);
 
-    _th_worker = std::thread([this] { this->detector_worker(); });
+    if (!prepare_contact()) {
+        _running.store(false);
+        return false;
+    }
 
+    _th_worker = std::thread([this] { this->detector_worker(); });
     _kf = KalmanDelayAware("/home/orangepi/08_DART_AUTOAIM/ros_ws/config.toml", "kalman");
     _th_kf = std::thread([this] { this->kf_worker(); });
-    _th_commu = std::thread([this] { this->commu_worker(); });
+    _th_contact = std::thread([this] { this->contact_worker(); });
 
     if (_config.SHOW_CV_MONITOR_WINDOWS) _th_ui = std::thread([this] { this->ui_worker(); });
 
-    // RCLCPP_INFO(this->get_logger(), "detector node thread start");
+    RCLCPP_INFO(this->get_logger(), "detector node thread start");
     _detector_log->info("detector node thread start");
 
     return true;
@@ -134,6 +181,9 @@ void Detector::stop() {
 
     if (_th_worker.joinable()) _th_worker.join();
     if (_th_kf.joinable()) _th_kf.join();
+    if (_th_contact.joinable()) _th_contact.join();
+
+    _contact_.stop();
     // RCLCPP_INFO(this->get_logger(), "detector node, kalman node thread closed");
     _detector_log->info("detector node, kalman node thread closed");
 }

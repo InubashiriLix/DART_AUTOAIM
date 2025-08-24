@@ -57,3 +57,15 @@ chi2_gate = -1.0 # 卡方门限：-1 关闭；5.99(95%)；9.21(99%)
 # 时序（延迟）
 [kalman.timing]
 vision_latency_ms = 13.0 # 视觉延迟估计（ms）
+
+[contact]
+serial_dev = "/dev/ttyACM0"
+baud = 115200
+rate_hz = 100.0             # 控制频率，不要小于1, 否则锁定1hz
+
+pitch_min_deg = -15.0
+pitch_max_deg = 25.0
+wrap_yaw_deg = true   # 将 yaw wrap 到 [-180,180)
+
+header = 0xA3                 # 下发帧头
+require_rx_before_send = true # 未收到首帧 RX 前是否禁止下发

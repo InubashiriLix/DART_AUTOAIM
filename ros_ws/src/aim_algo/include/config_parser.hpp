@@ -106,3 +106,43 @@ struct detector_config {
         }
     }
 };
+
+struct contact_config {
+    std::string serial_dev = "/dev/ttyACM0";
+    uint32_t baud = 115200;
+    float rate_hz = 100.f;  // 控制频率，不要小于1, 否则锁定1hz
+    //
+    float pitch_min_deg = -15.f;
+    float pitch_max_deg = 25.f;
+    bool wrap_yaw_deg = true;  // 将 yaw wrap 到 [-180,180)
+    //
+    uint8_t header = 0xA3;               // 下发帧头
+    bool require_rx_before_send = true;  // 未收到首帧 RX 前是否禁止下发
+    //
+    contact_config(
+        const std::string toml_abs_path_str = "/home/orangepi/08_DART_AUTOAIM/ros_ws/config.toml") {
+        auto config = toml::parse_file(toml_abs_path_str);
+        try {
+            const auto* contact_conf = config["contact"].as_table();
+            serial_dev = (*contact_conf)["serial_dev"].value_or(serial_dev);
+            rate_hz = (*contact_conf)["rate_hz"].value_or(rate_hz);
+
+            pitch_min_deg = (*contact_conf)["pitch_min_deg"].value_or(pitch_min_deg);
+            pitch_max_deg = (*contact_conf)["pitch_max_deg"].value_or(pitch_max_deg);
+            wrap_yaw_deg = (*contact_conf)["wrap_yaw_deg"].value_or(wrap_yaw_deg);
+
+            header = static_cast<uint8_t>((*contact_conf)["header"].value_or(int64_t{header}));
+            require_rx_before_send =
+                (*contact_conf)["require_rx_before_send"].value_or(require_rx_before_send);
+
+        } catch (const std::out_of_range& e) {
+            // Handle missing key
+            std::cerr << "Missing key: " << e.what() << std::endl;
+            throw;
+        } catch (const std::runtime_error& e) {
+            // Handle wrong type
+            std::cerr << "Type error: " << e.what() << std::endl;
+            throw;
+        }
+    }
+};

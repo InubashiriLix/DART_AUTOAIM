@@ -3,3 +3,4 @@ ros_ws/install
 ros_ws/log
 ros_ws/.cache
 ros_ws/src/aim_algo/include/spdlog/
+ros_ws

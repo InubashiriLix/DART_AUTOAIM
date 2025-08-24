@@ -20,6 +20,7 @@
 #include "config_parser.hpp"
 #include "kalman/kalman_delay_aware.hpp"
 #include "utils/Semaphore.hpp"
+#include "utils/logging.hpp"
 
 struct WhiteLampParams {
     int Y_min = 210;            // Y 亮度下限
@@ -47,6 +48,8 @@ class Detector : public rclcpp::Node {
     int _cam_qos_keep_last{};
     std::shared_ptr<CameraPublisher> _cam_node;
     void welcom();
+    // camera info logger
+    std::shared_ptr<spdlog::logger> _cam_log;
 
     // ======================== the detector worker and related ========================
     // aim cv functions and configs
@@ -63,6 +66,8 @@ class Detector : public rclcpp::Node {
     // threads
     std::thread _th_worker;
     void detector_worker();
+    // logger
+    std::shared_ptr<spdlog::logger> _detector_log;
 
     // =================== kalman filter with delay aware ==============================
     // the kalman class
@@ -74,6 +79,8 @@ class Detector : public rclcpp::Node {
     // the thread for kalman filter
     std::thread _th_kf;
     void kf_worker();
+    // logger
+    std::shared_ptr<spdlog::logger> _kalman_log;
 
     // ========================= commu lower machine thread ============================
     std::thread _th_commu;

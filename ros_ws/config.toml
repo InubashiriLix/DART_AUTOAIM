@@ -28,6 +28,7 @@ center_y = 384
 # how many frames to average for delay calculation
 SHOW_CV_CAL_DELAY = true
 avg_frame_delay_num = 300
+SHOW_TARGET_ANGLE = false
 
 
 [kalman]

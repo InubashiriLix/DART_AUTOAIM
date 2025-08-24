@@ -16,6 +16,8 @@ find_package(cv_bridge REQUIRED)
 
 find_package(OpenCV REQUIRED)
 find_package(Eigen3 REQUIRED)
+find_package(spdlog REQUIRED)
+find_package(fmt REQUIRED)
 
 if(BUILD_TESTING)
     find_package(ament_lint_auto REQUIRED)
@@ -38,7 +40,6 @@ add_executable(aim_algo
     src/detector.cc
     src/cv_utils.cc
     src/kalman.cc
-    src/tracker.cc
     src/main.cc
 )
 
@@ -56,6 +57,8 @@ include_directories(
 target_link_libraries(aim_algo
     ${OpenCV_LIBS}
     Eigen3::Eigen
+    spdlog::spdlog
+    fmt::fmt
     -lglog
     -lgxiapi
 )

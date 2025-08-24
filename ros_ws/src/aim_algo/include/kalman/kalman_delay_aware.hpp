@@ -8,6 +8,7 @@
 #include <utility>
 
 #include "toml.hpp"
+#include "utils/logging.hpp"
 
 struct KalmanMsg {
     std::int64_t img_target_time_stamp{0};     // ms
@@ -32,10 +33,11 @@ class KalmanDelayAware {
         reset();
     }
 
-    bool welcom(const std::string& toml_path, const std::string& table = "kalman");
+    bool welcom(const std::string& toml_path, const std::string& table = "kalman",
+                std::shared_ptr<spdlog::logger> logger = nullptr);
 
     // 仅打印当前已生效的配置（不加载）
-    void welcom() const;
+    void welcom(std::shared_ptr<spdlog::logger> logger) const;
 
     KalmanDelayAware() { reset(); }
 

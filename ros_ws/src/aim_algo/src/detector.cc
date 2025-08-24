@@ -3,6 +3,8 @@
 Detector::Detector(std::shared_ptr<CameraPublisher> cam_node)
     : Node("detector_bus_thread", rclcpp::NodeOptions().use_intra_process_comms(true)),
       _cam_node(cam_node) {
+    this->_detector_log = perflog::get("detector");
+    this->_cam_log = perflog::get("cam");
     this->_center_x = _config.center_x;
     this->_center_y = _config.center_y;
     this->_cam_qos_keep_last = _config.camera_qos_keep_last;
@@ -34,7 +36,7 @@ void Detector::prepare_cam_geometry() {
     }
     _cam_geo.R_cam2gimbal = Rz * Rx;
 
-    _cam_geo.print();
+    _cam_geo.print(this->_cam_log);
 }
 
 void Detector::detector_worker() {
@@ -55,10 +57,11 @@ void Detector::detector_worker() {
         bool find = detect_white_lamp(frame, center_px, bbox, &_ui_frame);
         if (find) {
             if (_cam_geo.pixelToYawPitchDeg(center_px, yaw_deg, pitch_deg)) {
-                std::cout << "Pixel (" << center_px.x << "," << center_px.y
-                          << ") => yaw=" << yaw_deg << " deg, pitch=" << pitch_deg << " deg\n";
+                if (_config.SHOW_TARGET_ANGLE)
+                    _detector_log->info("Pixel ({:.1f},{:.1f}) => yaw={:.1f} deg, pitch={:.1f} deg",
+                                        center_px.x, center_px.y, yaw_deg, pitch_deg);
             } else {
-                std::cout << "Failed to compute yaw/pitch\n";
+                if (_config.SHOW_TARGET_ANGLE) _detector_log->warn("pixel to yaw pitch failed");
             }
         }
 
@@ -70,8 +73,8 @@ void Detector::detector_worker() {
             if (time_stamps.size() >= _config.avg_frame_delay_num) {
                 double sum = std::accumulate(time_stamps.begin(), time_stamps.end(), 0.0);
                 double delay_avg = sum / time_stamps.size();
-                RCLCPP_INFO(this->get_logger(), "[frame detector] avg %d frame delay: %.3f ms",
-                            _config.avg_frame_delay_num, delay_avg);
+                _detector_log->info("[frame detector] avg {} frame delay: {:.3f} ms",
+                                    _config.avg_frame_delay_num, delay_avg);
                 time_stamps.clear();
             }
         }
@@ -120,7 +123,9 @@ bool Detector::start() {
 
     if (_config.SHOW_CV_MONITOR_WINDOWS) _th_ui = std::thread([this] { this->ui_worker(); });
 
-    RCLCPP_INFO(this->get_logger(), "detector node thread start");
+    // RCLCPP_INFO(this->get_logger(), "detector node thread start");
+    _detector_log->info("detector node thread start");
+
     return true;
 }
 
@@ -129,21 +134,35 @@ void Detector::stop() {
 
     if (_th_worker.joinable()) _th_worker.join();
     if (_th_kf.joinable()) _th_kf.join();
-    RCLCPP_INFO(this->get_logger(), "detector node, kalman node thread closed");
+    // RCLCPP_INFO(this->get_logger(), "detector node, kalman node thread closed");
+    _detector_log->info("detector node, kalman node thread closed");
 }
 
 void Detector::welcom() {
-    std::cout << "welcom to detector" << std::endl;
+    _detector_log->info("welcom to detector");
+    _detector_log->info("\n",  // intend
+                        "░▀█▀░█▀█░█░█░░░█▀▄░█▀▀░▀█▀░█▀▀░█▀▀░▀█▀░█▀█░█▀▄\n",
+                        "░░█░░█░█░█░█░░░█░█░█▀▀░░█░░█▀▀░█░░░░█░░█░█░█▀▄\n",
+                        "░▀▀▀░▀░▀░▀▀▀░░░▀▀░░▀▀▀░░▀░░▀▀▀░▀▀▀░░▀░░▀▀▀░▀░▀\n");
+    _detector_log->info("============= configs ==============");
+    _detector_log->info("SHOW_CV_MONITOR: {}", _config.SHOW_CV_MONITOR_WINDOWS);
+    _detector_log->info("CENTER_X: {}", _config.center_x);
+    _detector_log->info("CENTER_Y: {}", _config.center_y);
+    _detector_log->info("camera_qos_keep_last: {}", _config.camera_qos_keep_last);
+    _detector_log->info("SHOW_CV_CAL_DELAY: {}", _config.SHOW_CV_CAL_DELAY);
+    _detector_log->info("avg_frame_delay_num: {}", _config.avg_frame_delay_num);
+    _detector_log->info("=========== configs end ============");
 
-    std::cout << "░▀█▀░█▀█░█░█░░░█▀▄░█▀▀░▀█▀░█▀▀░█▀▀░▀█▀░█▀█░█▀▄\n"
-                 "░░█░░█░█░█░█░░░█░█░█▀▀░░█░░█▀▀░█░░░░█░░█░█░█▀▄\n"
-                 "░▀▀▀░▀░▀░▀▀▀░░░▀▀░░▀▀▀░░▀░░▀▀▀░▀▀▀░░▀░░▀▀▀░▀░▀\n"
-              << std::endl;
-    std::cout << "============= configs ==============" << std ::endl;
-    std::cout << "SHOW CV MONITOR: " << _config.SHOW_CV_MONITOR_WINDOWS << std::endl;
-    std::cout << "CENTER_X: " << _config.center_x << std::endl;
-    std::cout << "CENTER_Y: " << _config.center_y << std::endl;
-    std::cout << "SHOW_CV_CAL_DELAY: " << _config.SHOW_CV_CAL_DELAY << std::endl;
-    std::cout << "avg_frame_delay_num: " << _config.avg_frame_delay_num << std::endl;
-    std::cout << "=========== configs end ============" << std::endl;
+    // std::cout << "welcom to detector" << std::endl;
+    // std::cout << "░▀█▀░█▀█░█░█░░░█▀▄░█▀▀░▀█▀░█▀▀░█▀▀░▀█▀░█▀█░█▀▄\n"
+    //              "░░█░░█░█░█░█░░░█░█░█▀▀░░█░░█▀▀░█░░░░█░░█░█░█▀▄\n"
+    //              "░▀▀▀░▀░▀░▀▀▀░░░▀▀░░▀▀▀░░▀░░▀▀▀░▀▀▀░░▀░░▀▀▀░▀░▀\n"
+    //           << std::endl;
+    // std::cout << "============= configs ==============" << std ::endl;
+    // std::cout << "SHOW CV MONITOR: " << _config.SHOW_CV_MONITOR_WINDOWS << std::endl;
+    // std::cout << "CENTER_X: " << _config.center_x << std::endl;
+    // std::cout << "CENTER_Y: " << _config.center_y << std::endl;
+    // std::cout << "SHOW_CV_CAL_DELAY: " << _config.SHOW_CV_CAL_DELAY << std::endl;
+    // std::cout << "avg_frame_delay_num: " << _config.avg_frame_delay_num << std::endl;
+    // std::cout << "=========== configs end ============" << std::endl;
 }

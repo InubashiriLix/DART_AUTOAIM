@@ -5,6 +5,8 @@
 #include <string>
 #include <vector>
 
+#include "utils/logging.hpp"
+
 namespace geom {
 
 /**
@@ -28,7 +30,7 @@ struct CameraGeometry {
         R_cam2gimbal = cv::Mat::eye(3, 3, CV_64F);
     }
 
-    void print() const;
+    void print(std::shared_ptr<spdlog::logger> logger) const;
 
     // 像素 → 归一化平面坐标 (x_n, y_n)（z=1）
     bool pixelToNormalized(const cv::Point2f& uv, cv::Point2d& xy_n) const;

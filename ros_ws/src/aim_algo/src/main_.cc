@@ -5,8 +5,6 @@
 #include "kalman/kalman_delay_aware.hpp"
 
 int shit1() {
-    std::cout << "shitshitshit" << std::endl;
-
     KalmanDelayAware kf("/home/inubashiri/17_DART_AUTOAIM/ros_ws/config.toml");  // 读 [kalman] 表
 
     // 假设我们每 33ms 来一帧观测（用 pitch/yaw 角度直接喂）

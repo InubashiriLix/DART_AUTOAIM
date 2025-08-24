@@ -21,39 +21,42 @@
 #include <spdlog/async.h>
 #include <spdlog/pattern_formatter.h>
 #include <spdlog/sinks/basic_file_sink.h>
-#include <spdlog/sinks/daily_file_sink.h>     // 如需按日
-#include <spdlog/sinks/rotating_file_sink.h>  // 如需滚动
+#include <spdlog/sinks/daily_file_sink.h>
+#include <spdlog/sinks/rotating_file_sink.h>
 #include <spdlog/spdlog.h>
 
+#include <algorithm>
+#include <cctype>
+#include <chrono>
 #include <cstdarg>
 #include <cstdio>
+#include <cstring>
 #include <filesystem>
 #include <memory>
 #include <string>
-#include <unordered_map>
+#include <thread>
 #include <vector>
 
 #ifndef PERLOG_DEFAULT_QUEUE
-#define PERLOG_DEFAULT_QUEUE (256 * 1024)  // 异步队列大小 (条)
+#define PERLOG_DEFAULT_QUEUE (256 * 1024)
 #endif
 
 #ifndef SPDLOG_ACTIVE_LEVEL
-#define SPDLOG_ACTIVE_LEVEL SPDLOG_LEVEL_INFO  // 编译期裁剪: 低于 INFO 的日志直接不编译
+#define SPDLOG_ACTIVE_LEVEL SPDLOG_LEVEL_INFO
 #endif
 
 namespace perflog {
 
 struct Channel {
-    std::string name;  // logger 名（用于 get）
-    std::string file;  // 输出文件路径
+    std::string name;
+    std::string file;
 };
 
-// 简单读取环境变量 LOG_LEVEL（trace/debug/info/warn/error/critical/off）
 inline spdlog::level::level_enum level_from_env() {
     const char* e = std::getenv("LOG_LEVEL");
     if (!e) return spdlog::level::info;
     std::string v(e);
-    for (auto& c : v) c = (char)tolower(c);
+    for (auto& c : v) c = (char)std::tolower((unsigned char)c);
     if (v == "trace") return spdlog::level::trace;
     if (v == "debug") return spdlog::level::debug;
     if (v == "info") return spdlog::level::info;
@@ -72,43 +75,35 @@ inline void ensure_parent_dirs(const std::string& path) {
     }
 }
 
-// 初始化：为每个 Channel 建立独立的异步 logger（互不抢锁），并注册
 inline void init(const std::vector<Channel>& channels, size_t queue_size = PERLOG_DEFAULT_QUEUE,
                  spdlog::level::level_enum lvl = level_from_env(),
                  const std::string& pattern = "[%H:%M:%S.%e] [%^%l%$] %v") {
-    // 线程池只初始化一次
     static bool pool_inited = false;
     if (!pool_inited) {
-        auto qsize = queue_size;
         auto nthreads = std::max(1u, std::thread::hardware_concurrency());
-        spdlog::init_thread_pool(qsize, nthreads);
+        spdlog::init_thread_pool(queue_size, nthreads);
         pool_inited = true;
-        // 定时 flush，错误级别立刻 flush（不建议每条都 flush）
         spdlog::flush_every(std::chrono::seconds(1));
         spdlog::flush_on(spdlog::level::err);
     }
-
     for (auto& ch : channels) {
         ensure_parent_dirs(ch.file);
         auto sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>(ch.file, true);
         auto logger = std::make_shared<spdlog::async_logger>(
-            ch.name, sink, spdlog::thread_pool(),
-            spdlog::async_overflow_policy::overrun_oldest  // 队列满时丢最旧的
-        );
+            ch.name, sink, spdlog::thread_pool(), spdlog::async_overflow_policy::overrun_oldest);
         logger->set_level(lvl);
         logger->set_pattern(pattern);
         spdlog::register_logger(logger);
     }
 }
 
-// 取 logger（已在 init 时注册）
 inline std::shared_ptr<spdlog::logger> get(const std::string& name) {
     auto lg = spdlog::get(name);
     if (!lg) throw std::runtime_error("perflog: logger not found: " + name);
     return lg;
 }
 
-// -------- printf 风格辅助（高性能实现：一次 vsnprintf 到堆缓存） --------
+// -------- printf 风格：一次 vsnprintf 到 string --------
 inline std::string vprintf_to_string(const char* fmt, va_list ap) {
     va_list ap2;
     va_copy(ap2, ap);
@@ -133,33 +128,49 @@ inline void logf(const std::string& logger_name, spdlog::level::level_enum lvl, 
     lg->log(lvl, s);
 }
 
-// 方便函数
-template <typename... Args>
-inline void tracef(const std::string& n, const char* f, Args...) {
-    logf(n, spdlog::level::trace, f, args...);
+inline void tracef(const std::string& n, const char* f, ...) {
+    va_list ap;
+    va_start(ap, f);
+    std::string s = vprintf_to_string(f, ap);
+    va_end(ap);
+    get(n)->log(spdlog::level::trace, s);
 }
-template <typename... Args>
-inline void debugf(const std::string& n, const char* f, Args...) {
-    logf(n, spdlog::level::debug, f, args...);
+inline void debugf(const std::string& n, const char* f, ...) {
+    va_list ap;
+    va_start(ap, f);
+    std::string s = vprintf_to_string(f, ap);
+    va_end(ap);
+    get(n)->log(spdlog::level::debug, s);
 }
-template <typename... Args>
-inline void infof(const std::string& n, const char* f, Args...) {
-    logf(n, spdlog::level::info, f, args...);
+inline void infof(const std::string& n, const char* f, ...) {
+    va_list ap;
+    va_start(ap, f);
+    std::string s = vprintf_to_string(f, ap);
+    va_end(ap);
+    get(n)->log(spdlog::level::info, s);
 }
-template <typename... Args>
-inline void warnf(const std::string& n, const char* f, Args...) {
-    logf(n, spdlog::level::warn, f, args...);
+inline void warnf(const std::string& n, const char* f, ...) {
+    va_list ap;
+    va_start(ap, f);
+    std::string s = vprintf_to_string(f, ap);
+    va_end(ap);
+    get(n)->log(spdlog::level::warn, s);
 }
-template <typename... Args>
-inline void errorf(const std::string& n, const char* f, Args...) {
-    logf(n, spdlog::level::err, f, args...);
+inline void errorf(const std::string& n, const char* f, ...) {
+    va_list ap;
+    va_start(ap, f);
+    std::string s = vprintf_to_string(f, ap);
+    va_end(ap);
+    get(n)->log(spdlog::level::err, s);
 }
-template <typename... Args>
-inline void critf(const std::string& n, const char* f, Args...) {
-    logf(n, spdlog::level::critical, f, args...);
+inline void critf(const std::string& n, const char* f, ...) {
+    va_list ap;
+    va_start(ap, f);
+    std::string s = vprintf_to_string(f, ap);
+    va_end(ap);
+    get(n)->log(spdlog::level::critical, s);
 }
 
-// 关闭：冲刷并清理（可选）
 inline void shutdown() { spdlog::shutdown(); }
 
 }  // namespace perflog

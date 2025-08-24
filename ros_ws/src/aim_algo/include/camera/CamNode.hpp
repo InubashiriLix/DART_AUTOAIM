@@ -10,6 +10,7 @@
 #include <thread>
 
 #include "config_parser.hpp"
+#include "utils/logging.hpp"
 namespace cv {
 class Mat;
 }
@@ -46,6 +47,7 @@ class CameraPublisher : public rclcpp::Node {
     cv::Mat D;
     cv::Mat P3x3;
 
+    std::shared_ptr<spdlog::logger> _cam_log;
     std::thread _th_worker;
     std::thread _th_ui;
     std::atomic<bool> _running{false};

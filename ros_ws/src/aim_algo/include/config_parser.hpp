@@ -74,7 +74,8 @@ struct detector_config {
     int center_x;
     int center_y;
     bool SHOW_CV_CAL_DELAY;
-    int avg_frame_delay_num = 300;
+    size_t avg_frame_delay_num = 300;
+    bool SHOW_TARGET_ANGLE = false;
 
     detector_config(
         const std::string toml_abs_path_str = "/home/orangepi/08_DART_AUTOAIM/ros_ws/config.toml") {
@@ -92,6 +93,7 @@ struct detector_config {
 
             SHOW_CV_CAL_DELAY = (*detector)["SHOW_CV_CAL_DELAY"].value_or(false);
             avg_frame_delay_num = (*detector)["avg_frame_delay_num"].value_or(300);
+            SHOW_TARGET_ANGLE = (*detector)["SHOW_TARGET_ANGLE"].value_or(false);
 
         } catch (const std::out_of_range& e) {
             // Handle missing key

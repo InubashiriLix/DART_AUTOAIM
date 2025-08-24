@@ -210,53 +210,95 @@ std::pair<float, float> KalmanDelayAware::getDeltaAnglesPD(float gimbal_pitch_de
     return {dp, dy};
 }
 
-bool KalmanDelayAware::welcom(const std::string& toml_path, const std::string& table) {
+bool KalmanDelayAware::welcom(const std::string& toml_path, const std::string& table,
+                              std::shared_ptr<spdlog::logger> logger) {
+    if (!logger) {
+        logger = perflog::get("kalman");
+    }
+
     bool ok = loadFromToml(toml_path, table);
 
-    std::cout << "\nwelcom to KalmanDelayAware \n";
-    std::cout << "░█▀▄░█▀▀░█░░░█▀█░█░█░░░█░█░█▀█░█░░░█▄█░█▀█░█▀█\n"
-                 "░█░█░█▀▀░█░░░█▀█░░█░░░░█▀▄░█▀█░█░░░█░█░█▀█░█░█\n"
-                 "░▀▀░░▀▀▀░▀▀▀░▀░▀░░▀░░░░▀░▀░▀░▀░▀▀▀░▀░▀░▀░▀░▀░▀\n"
-              << std::endl;
-
-    std::cout << (ok ? "[OK] " : "[ERR] ") << "load config from: " << toml_path << " [" << table
-              << "]\n\n";
-
-    std::cout << "============= kalman params =============\n";
-    std::cout << std::fixed << std::setprecision(4);
-    std::cout << "[output]\n"
-              << "  kp=" << kp_ << ", kv=" << kv_ << ", preview_ms=" << preview_ms_
-              << ", deadband_deg=" << deadband_deg_ << ", max_step_deg=" << max_step_deg_ << "\n";
-    std::cout << "[process]\n"
-              << "  sigma_a_pitch=" << sigma_a_pitch_ << ", sigma_a_yaw=" << sigma_a_yaw_
-              << ", p0_angle=" << p0_angle_ << ", p0_rate=" << p0_rate_ << "\n";
-    std::cout << "[measurement]\n"
-              << "  r_pitch=" << r_pitch_ << ", r_yaw=" << r_yaw_ << ", chi2_gate=" << chi2_gate_
-              << "\n";
-    std::cout << "[timing]\n"
-              << "  vision_latency_ms=" << vision_latency_ms_ << "\n";
-    std::cout << "=========================================\n\n";
+    logger->info("welcom to KalmanDelayAware");
+    logger->info(
+        "\n"
+        "░█▀▄░█▀▀░█░░░█▀█░█░█░░░█░█░█▀█░█░░░█▄█░█▀█░█▀█\n"
+        "░█░█░█▀▀░█░░░█▀█░░█░░░░█▀▄░█▀█░█░░░█░█░█▀█░█░█\n"
+        "░▀▀░░▀▀▀░▀▀▀░▀░▀░░▀░░░░▀░▀░▀░▀░▀▀▀░▀░▀░▀░▀░▀░▀\n");
+    logger->info("{} load config from: {} [{}]", (ok ? "[OK] " : "[ERR] "), toml_path, table);
+    logger->info("============= kalman params =============");
+    // logger->info("val={:.3f}", val);
+    // logger->info("vec=({}, {}, {})", x, y, z);
+    logger->info("[output]  kp={}, kv={}, preview_ms={}, deadband_deg={}, max_step_deg={}", kp_,
+                 kv_, preview_ms_, deadband_deg_, max_step_deg_);
+    logger->info("[process]  sigma_a_pitch={}, sigma_a_yaw={}, p0_angle={}, p0_rate={}",
+                 sigma_a_pitch_, sigma_a_yaw_, p0_angle_, p0_rate_);
+    logger->info("[measurement]  r_pitch={}, r_yaw={}, chi2_gate={}", r_pitch_, r_yaw_, chi2_gate_);
+    logger->info("[timing]  vision_latency_ms={}", vision_latency_ms_);
+    logger->info("=========================================");
+    // std::cout << "\nwelcom to KalmanDelayAware \n";
+    // std::cout << "░█▀▄░█▀▀░█░░░█▀█░█░█░░░█░█░█▀█░█░░░█▄█░█▀█░█▀█\n"
+    //              "░█░█░█▀▀░█░░░█▀█░░█░░░░█▀▄░█▀█░█░░░█░█░█▀█░█░█\n"
+    //              "░▀▀░░▀▀▀░▀▀▀░▀░▀░░▀░░░░▀░▀░▀░▀░▀▀▀░▀░▀░▀░▀░▀░▀\n"
+    //           << std::endl;
+    //
+    // std::cout << (ok ? "[OK] " : "[ERR] ") << "load config from: " << toml_path << " [" << table
+    //           << "]\n\n";
+    // std::cout << "============= kalman params =============\n";
+    // std::cout << std::fixed << std::setprecision(4);
+    // std::cout << "[output]\n"
+    //           << "  kp=" << kp_ << ", kv=" << kv_ << ", preview_ms=" << preview_ms_
+    //           << ", deadband_deg=" << deadband_deg_ << ", max_step_deg=" << max_step_deg_ <<
+    //           "\n";
+    // std::cout << "[process]\n"
+    //           << "  sigma_a_pitch=" << sigma_a_pitch_ << ", sigma_a_yaw=" << sigma_a_yaw_
+    //           << ", p0_angle=" << p0_angle_ << ", p0_rate=" << p0_rate_ << "\n";
+    // std::cout << "[measurement]\n"
+    //           << "  r_pitch=" << r_pitch_ << ", r_yaw=" << r_yaw_ << ", chi2_gate=" << chi2_gate_
+    //           << "\n";
+    // std::cout << "[timing]\n"
+    //           << "  vision_latency_ms=" << vision_latency_ms_ << "\n";
+    // std::cout << "=========================================\n\n";
     return ok;
 }
 
-void KalmanDelayAware::welcom() const {
-    std::cout << "\nwelcom to KalmanDelayAware \n";
-    std::cout << "░█▀▄░█▀▀░█░░░█▀█░█░█░░░█░█░█▀█░█░░░█▄█░█▀█░█▀█\n"
-                 "░█░█░█▀▀░█░░░█▀█░░█░░░░█▀▄░█▀█░█░░░█░█░█▀█░█░█\n"
-                 "░▀▀░░▀▀▀░▀▀▀░▀░▀░░▀░░░░▀░▀░▀░▀░▀▀▀░▀░▀░▀░▀░▀░▀\n"
-              << std::endl;
-    std::cout << "============= kalman params =============\n";
-    std::cout << std::fixed << std::setprecision(4);
-    std::cout << "[output]\n"
-              << "  kp=" << kp_ << ", kv=" << kv_ << ", preview_ms=" << preview_ms_
-              << ", deadband_deg=" << deadband_deg_ << ", max_step_deg=" << max_step_deg_ << "\n";
-    std::cout << "[process]\n"
-              << "  sigma_a_pitch=" << sigma_a_pitch_ << ", sigma_a_yaw=" << sigma_a_yaw_
-              << ", p0_angle=" << p0_angle_ << ", p0_rate=" << p0_rate_ << "\n";
-    std::cout << "[measurement]\n"
-              << "  r_pitch=" << r_pitch_ << ", r_yaw=" << r_yaw_ << ", chi2_gate=" << chi2_gate_
-              << "\n";
-    std::cout << "[timing]\n"
-              << "  vision_latency_ms=" << vision_latency_ms_ << "\n";
-    std::cout << "=========================================\n\n";
+void KalmanDelayAware::welcom(std::shared_ptr<spdlog::logger> logger) const {
+    if (!logger) {
+        logger = perflog::get("kalman");
+    }
+
+    logger->info("welcom to KalmanDelayAware");
+    logger->info(
+        "\n"
+        "░█▀▄░█▀▀░█░░░█▀█░█░█░░░█░█░█▀█░█░░░█▄█░█▀█░█▀█\n"
+        "░█░█░█▀▀░█░░░█▀█░░█░░░░█▀▄░█▀█░█░░░█░█░█▀█░█░█\n"
+        "░▀▀░░▀▀▀░▀▀▀░▀░▀░░▀░░░░▀░▀░▀░▀░▀▀▀░▀░▀░▀░▀░▀░▀\n");
+    logger->info("============= kalman params =============");
+    logger->info("[output]  kp={}, kv={}, preview_ms={}, deadband_deg={}, max_step_deg={}", kp_,
+                 kv_, preview_ms_, deadband_deg_, max_step_deg_);
+    logger->info("[process]  sigma_a_pitch={}, sigma_a_yaw={}, p0_angle={}, p0_rate={}",
+                 sigma_a_pitch_, sigma_a_yaw_, p0_angle_, p0_rate_);
+    logger->info("[measurement]  r_pitch={}, r_yaw={}, chi2_gate={}", r_pitch_, r_yaw_, chi2_gate_);
+    logger->info("[timing]  vision_latency_ms={}", vision_latency_ms_);
+    logger->info("=========================================");
+
+    // std::cout << "\nwelcom to KalmanDelayAware \n";
+    // std::cout << "░█▀▄░█▀▀░█░░░█▀█░█░█░░░█░█░█▀█░█░░░█▄█░█▀█░█▀█\n"
+    //              "░█░█░█▀▀░█░░░█▀█░░█░░░░█▀▄░█▀█░█░░░█░█░█▀█░█░█\n"
+    //              "░▀▀░░▀▀▀░▀▀▀░▀░▀░░▀░░░░▀░▀░▀░▀░▀▀▀░▀░▀░▀░▀░▀░▀\n"
+    //           << std::endl;
+    // std::cout << "============= kalman params =============\n";
+    // std::cout << std::fixed << std::setprecision(4);
+    // std::cout << "[output]\n"
+    //           << "  kp=" << kp_ << ", kv=" << kv_ << ", preview_ms=" << preview_ms_
+    //           << ", deadband_deg=" << deadband_deg_ << ", max_step_deg=" << max_step_deg_ <<
+    //           "\n";
+    // std::cout << "[process]\n"
+    //           << "  sigma_a_pitch=" << sigma_a_pitch_ << ", sigma_a_yaw=" << sigma_a_yaw_
+    //           << ", p0_angle=" << p0_angle_ << ", p0_rate=" << p0_rate_ << "\n";
+    // std::cout << "[measurement]\n"
+    //           << "  r_pitch=" << r_pitch_ << ", r_yaw=" << r_yaw_ << ", chi2_gate=" << chi2_gate_
+    //           << "\n";
+    // std::cout << "[timing]\n"
+    //           << "  vision_latency_ms=" << vision_latency_ms_ << "\n";
+    // std::cout << "=========================================\n\n";
 }

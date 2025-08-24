@@ -1,16 +1,36 @@
-#include <iostream>
-
 #include "camera/CamGeo.hpp"
+
+#include <iostream>
+#include <sstream>
+
+static inline std::string mat_str(const cv::Mat& m, int prec = 6,
+                                  cv::Formatter::FormatType style = cv::Formatter::FMT_NUMPY) {
+    auto fmt = cv::Formatter::get(style);
+    fmt->set64fPrecision(prec);
+    fmt->set32fPrecision(prec);
+    std::ostringstream os;
+    os << fmt->format(m);
+    return os.str();
+}
 
 namespace geom {
 
-void CameraGeometry::print() const {
-    std::cout << "[CameraGeometry]\n";
-    std::cout << "  rectified = " << (rectified ? "true" : "false") << "\n";
-    std::cout << "  image: " << image_width << " x " << image_height << "\n";
-    std::cout << "  K = \n" << K << "\n";
-    std::cout << "  D = \n" << D << "\n";
-    std::cout << "  R_cam2gimbal = \n" << R_cam2gimbal << "\n";
+void CameraGeometry::print(std::shared_ptr<spdlog::logger> logger) const {
+    logger = logger ? logger : perflog::get("cam");
+
+    logger->info("[CameraGeometry]");
+    logger->info("  rectified = {}", rectified ? "true" : "false");
+    logger->info("  image: {} x {}", image_width, image_height);
+    logger->info("K =\n{}", mat_str(K, 6));
+    logger->info("D =\n{}", mat_str(D, 6));
+    logger->info("R_cam2gimbal =\n{}", mat_str(R_cam2gimbal, 6));
+
+    // std::cout << "[CameraGeometry]\n";
+    // std::cout << "  rectified = " << (rectified ? "true" : "false") << "\n";
+    // std::cout << "  image: " << image_width << " x " << image_height << "\n";
+    // std::cout << "  K = \n" << K << "\n";
+    // std::cout << "  D = \n" << D << "\n";
+    // std::cout << "  R_cam2gimbal = \n" << R_cam2gimbal << "\n";
 }
 
 bool CameraGeometry::pixelToNormalized(const cv::Point2f& uv, cv::Point2d& xy_n) const {

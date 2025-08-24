@@ -1,7 +1,14 @@
 #include "camera/CamNode.hpp"
 #include "detector.hpp"
+#include "utils/logging.hpp"
 
 int main(int argc, char **argv) {
+    // initialize the log system
+    perflog::init({{"detector", "logs/detector.log"},
+                   {"cam", "logs/cam.log"},
+                   {"kalman", "logs/kalman.log"},
+                   {"commu", "logs/commu.log"}});
+
     rclcpp::init(argc, argv);
 
     auto cam_node = std::make_shared<CameraPublisher>(argc, argv);

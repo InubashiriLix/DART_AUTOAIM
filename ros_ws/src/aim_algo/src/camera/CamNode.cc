@@ -21,6 +21,7 @@ static Camera *camera = nullptr;
 
 CameraPublisher::CameraPublisher(int /*argc*/, char ** /*argv*/)
     : Node("camera_publisher", rclcpp::NodeOptions().use_intra_process_comms(true)) {
+    this->_cam_log = perflog::get("cam");
     this->config = camera_config();
     prepare_cam_info();
     _image_pub_ = this->create_publisher<sensor_msgs::msg::Image>(
@@ -70,10 +71,12 @@ bool CameraPublisher::start() {
                                config.ROI_width, config.ROI_height, 1500, 16, false, config.FPS,
                                config.nBinning);
         if (!ok || !camera->start()) {
+            _cam_log->error("camera init or start failed!");
             RCLCPP_WARN(this->get_logger(), "No camera");
             return false;
         }
     } else {
+        _cam_log->warn("FOR_PC=false, not opening hardware camera.");
         RCLCPP_WARN(this->get_logger(), "FOR_PC=false, not opening hardware camera.");
         return false;
     }
@@ -97,6 +100,7 @@ void CameraPublisher::stop() {
     if (_th_ui.joinable()) _th_ui.join();
 
     if (camera) {
+        _cam_log->info("closing camera instance on quitting node");
         RCLCPP_INFO(this->get_logger(), "closing camera instance on quitting node");
         camera->stop();
         delete camera;
@@ -116,26 +120,48 @@ sensor_msgs::msg::CameraInfo CameraPublisher::get_camera_info_buf() { return _ca
 CameraPublisher::~CameraPublisher() { stop(); }
 
 void CameraPublisher::welcom() {
-    std::cout << "\n"
-                 "░█▀▀░▀█▀░█▀█░█░░░█░░░█▀█░█░░░█▀▀░█▀█░█▄█░▀█░\n"
-                 "░█░░░░█░░█▀█░█░░░█░░░█░█░▀░░░█░░░█▀█░█░█░░█░\n"
-                 "░▀▀▀░▀▀▀░▀░▀░▀▀▀░▀▀▀░▀▀▀░▀░░░▀▀▀░▀░▀░▀░▀░▀▀▀\n";
-    std::cout << "===================================\nconfigs:\n";
-    std::cout << "SN: " << config.SN << "\n"
-              << "IS_ROTATE: " << (config.IS_ROTATE ? "true" : "false") << "\n"
-              << "FOR_PC: " << (config.FOR_PC ? "true" : "false") << "\n"
-              << "SHOW_IMG: " << (config.SHOW_CV_MONITOR_WINDOWS ? "true" : "false") << "\n"
-              << "MONITOR img GAIN: ";
-    for (size_t i = 0; i < config.MONITOR_IMG_GAIN.size(); ++i)
-        std::cout << config.MONITOR_IMG_GAIN[i]
-                  << (i + 1 < config.MONITOR_IMG_GAIN.size() ? ", " : "");
-    std::cout << "\nROI_width: " << config.ROI_width << "\nROI_height: " << config.ROI_height
-              << "\nsensor_width: " << config.sensor_width
-              << "\nsensor_height: " << config.sensor_height << "\nnBinning: " << config.nBinning
-              << "\nFPS: " << config.FPS
-              << "\npublish_image_msg: " << (config.publish_image_msg ? "true" : "false")
-              << "\npublish_camera_info:" << (config.publish_camera_info ? " true " : " false ")
-              << "\n======== end for configs =========\n";
+    _cam_log->info("CameraPublisher Node started.");
+    _cam_log->info(
+        "\n"
+        "░█▀▀░▀█▀░█▀█░█░░░█░░░█▀█░█░░░█▀▀░█▀█░█▄█░▀█░\n"
+        "░█░░░░█░░█▀█░█░░░█░░░█░█░▀░░░█░░░█▀█░█░█░░█░\n"
+        "░▀▀▀░▀▀▀░▀░▀░▀▀▀░▀▀▀░▀▀▀░▀░░░▀▀▀░▀░▀░▀░▀░▀▀▀\n");
+    _cam_log->info("============= configs ================");
+    _cam_log->info("SN: {}", config.SN);
+    _cam_log->info("IS_ROTATE: {}", config.IS_ROTATE ? "true" : "false");
+    _cam_log->info("FOR_PC: {}", config.FOR_PC ? "true" : "false");
+    _cam_log->info("SHOW_IMG: {}", config.SHOW_CV_MONITOR_WINDOWS ? "true" : "false");
+    _cam_log->info("nBinning: {}", config.nBinning);
+    _cam_log->info("MONITOR img GAIN: {}", fmt::join(config.MONITOR_IMG_GAIN, ", "));
+    _cam_log->info("ROI_width: {}", config.ROI_width);
+    _cam_log->info("ROI_height: {}", config.ROI_height);
+    _cam_log->info("sensor_width: {}", config.sensor_width);
+    _cam_log->info("sensor_height: {}", config.sensor_height);
+    _cam_log->info("FPS: {}", config.FPS);
+    _cam_log->info("publish_image_msg: {}", config.publish_image_msg ? "true" : "false");
+    _cam_log->info("publish_camera_info: {}", config.publish_camera_info ? "true" : "false");
+    _cam_log->info("======== end for configs =========");
+
+    // std::cout << "\n"
+    //              "░█▀▀░▀█▀░█▀█░█░░░█░░░█▀█░█░░░█▀▀░█▀█░█▄█░▀█░\n"
+    //              "░█░░░░█░░█▀█░█░░░█░░░█░█░▀░░░█░░░█▀█░█░█░░█░\n"
+    //              "░▀▀▀░▀▀▀░▀░▀░▀▀▀░▀▀▀░▀▀▀░▀░░░▀▀▀░▀░▀░▀░▀░▀▀▀\n";
+    // std::cout << "===================================\nconfigs:\n";
+    // std::cout << "SN: " << config.SN << "\n"
+    //           << "IS_ROTATE: " << (config.IS_ROTATE ? "true" : "false") << "\n"
+    //           << "FOR_PC: " << (config.FOR_PC ? "true" : "false") << "\n"
+    //           << "SHOW_IMG: " << (config.SHOW_CV_MONITOR_WINDOWS ? "true" : "false") << "\n"
+    //           << "MONITOR img GAIN: ";
+    // for (size_t i = 0; i < config.MONITOR_IMG_GAIN.size(); ++i)
+    //     std::cout << config.MONITOR_IMG_GAIN[i]
+    //               << (i + 1 < config.MONITOR_IMG_GAIN.size() ? ", " : "");
+    // std::cout << "\nROI_width: " << config.ROI_width << "\nROI_height: " << config.ROI_height
+    //           << "\nsensor_width: " << config.sensor_width
+    //           << "\nsensor_height: " << config.sensor_height << "\nnBinning: " << config.nBinning
+    //           << "\nFPS: " << config.FPS
+    //           << "\npublish_image_msg: " << (config.publish_image_msg ? "true" : "false")
+    //           << "\npublish_camera_info:" << (config.publish_camera_info ? " true " : " false ")
+    //           << "\n======== end for configs =========\n";
 }
 
 void CameraPublisher::worker_loop() {
@@ -188,8 +214,10 @@ void CameraPublisher::worker_loop() {
         if (time_stamps.size() >= config.avg_frame_delay_num) {
             double sum = std::accumulate(time_stamps.begin(), time_stamps.end(), 0.0);
             double delay_avg = sum / time_stamps.size();
-            RCLCPP_INFO(this->get_logger(), "avg %d frame delay: %.3f ms",
-                        config.avg_frame_delay_num, delay_avg);
+            _cam_log->info("[frame camera] avg {} frame delay: {:.3f} ms",
+                           config.avg_frame_delay_num, delay_avg);
+            // RCLCPP_INFO(this->get_logger(), "avg %d frame delay: %.3f ms",
+            //             config.avg_frame_delay_num, delay_avg);
             time_stamps.clear();
         }
     }

@@ -117,9 +117,13 @@ void Detector::kf_worker() {
 
 void Detector::contact_worker() {
     while (_running.load(std::memory_order_relaxed)) {
-        // ProjectileRx rx;
-        // if (_contact_.latest_rx(rx))
-
+        ProjectileRx rx;
+        if (_contact_.latest_rx(rx)) {
+            _contact_log->info(
+                "latest rx: pitch {:.2f} deg, yaw {:.2f} deg, quaternion [{:.2f}, {:.2f}, {:.2f}, "
+                "{:.2f}]",
+                rx.pitch, rx.yaw, rx.q[0], rx.q[1], rx.q[2], rx.q[3]);
+        }
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
 }

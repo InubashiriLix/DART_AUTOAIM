@@ -50,7 +50,6 @@ add_executable(aim_algo
     src/contact/Checksum.cc
     src/contact/CommPort.cc
     src/contact/Contact.cc
-    src/contact/readtoml.cc
     # main entrance
     src/main.cc
 )

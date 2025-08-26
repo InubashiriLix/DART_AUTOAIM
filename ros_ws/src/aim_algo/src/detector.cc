@@ -210,17 +210,4 @@ void Detector::welcom() {
     _detector_log->info("SHOW_CV_CAL_DELAY: {}", _config.SHOW_CV_CAL_DELAY);
     _detector_log->info("avg_frame_delay_num: {}", _config.avg_frame_delay_num);
     _detector_log->info("=========== configs end ============");
-
-    // std::cout << "welcom to detector" << std::endl;
-    // std::cout << "░▀█▀░█▀█░█░█░░░█▀▄░█▀▀░▀█▀░█▀▀░█▀▀░▀█▀░█▀█░█▀▄\n"
-    //              "░░█░░█░█░█░█░░░█░█░█▀▀░░█░░█▀▀░█░░░░█░░█░█░█▀▄\n"
-    //              "░▀▀▀░▀░▀░▀▀▀░░░▀▀░░▀▀▀░░▀░░▀▀▀░▀▀▀░░▀░░▀▀▀░▀░▀\n"
-    //           << std::endl;
-    // std::cout << "============= configs ==============" << std ::endl;
-    // std::cout << "SHOW CV MONITOR: " << _config.SHOW_CV_MONITOR_WINDOWS << std::endl;
-    // std::cout << "CENTER_X: " << _config.center_x << std::endl;
-    // std::cout << "CENTER_Y: " << _config.center_y << std::endl;
-    // std::cout << "SHOW_CV_CAL_DELAY: " << _config.SHOW_CV_CAL_DELAY << std::endl;
-    // std::cout << "avg_frame_delay_num: " << _config.avg_frame_delay_num << std::endl;
-    // std::cout << "=========== configs end ============" << std::endl;
 }

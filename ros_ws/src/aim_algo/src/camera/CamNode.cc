@@ -141,27 +141,6 @@ void CameraPublisher::welcom() {
     _cam_log->info("publish_image_msg: {}", config.publish_image_msg ? "true" : "false");
     _cam_log->info("publish_camera_info: {}", config.publish_camera_info ? "true" : "false");
     _cam_log->info("======== end for configs =========");
-
-    // std::cout << "\n"
-    //              "░█▀▀░▀█▀░█▀█░█░░░█░░░█▀█░█░░░█▀▀░█▀█░█▄█░▀█░\n"
-    //              "░█░░░░█░░█▀█░█░░░█░░░█░█░▀░░░█░░░█▀█░█░█░░█░\n"
-    //              "░▀▀▀░▀▀▀░▀░▀░▀▀▀░▀▀▀░▀▀▀░▀░░░▀▀▀░▀░▀░▀░▀░▀▀▀\n";
-    // std::cout << "===================================\nconfigs:\n";
-    // std::cout << "SN: " << config.SN << "\n"
-    //           << "IS_ROTATE: " << (config.IS_ROTATE ? "true" : "false") << "\n"
-    //           << "FOR_PC: " << (config.FOR_PC ? "true" : "false") << "\n"
-    //           << "SHOW_IMG: " << (config.SHOW_CV_MONITOR_WINDOWS ? "true" : "false") << "\n"
-    //           << "MONITOR img GAIN: ";
-    // for (size_t i = 0; i < config.MONITOR_IMG_GAIN.size(); ++i)
-    //     std::cout << config.MONITOR_IMG_GAIN[i]
-    //               << (i + 1 < config.MONITOR_IMG_GAIN.size() ? ", " : "");
-    // std::cout << "\nROI_width: " << config.ROI_width << "\nROI_height: " << config.ROI_height
-    //           << "\nsensor_width: " << config.sensor_width
-    //           << "\nsensor_height: " << config.sensor_height << "\nnBinning: " << config.nBinning
-    //           << "\nFPS: " << config.FPS
-    //           << "\npublish_image_msg: " << (config.publish_image_msg ? "true" : "false")
-    //           << "\npublish_camera_info:" << (config.publish_camera_info ? " true " : " false ")
-    //           << "\n======== end for configs =========\n";
 }
 
 void CameraPublisher::worker_loop() {

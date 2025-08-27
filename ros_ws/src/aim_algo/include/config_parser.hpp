@@ -55,7 +55,7 @@ struct camera_config {
                 (*cam)["frame_refresh_rate"].value_or(int64_t{frame_refresh_rate}));
 
             avg_frame_delay_num = static_cast<double>(
-                (*cam)["avg_frame_delay_num"].value_or(int{avg_frame_delay_num}));
+                (*cam)["avg_frame_delay_num"].value_or(size_t{avg_frame_delay_num}));
 
             publish_image_msg = (*cam)["publish_image_msg"].value_or(publish_image_msg);
             publish_camera_info = (*cam)["publish_camera_info"].value_or(publish_camera_info);

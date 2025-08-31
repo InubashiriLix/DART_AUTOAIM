@@ -9,10 +9,11 @@
 class CommandWindow : public Window {
    public:
     explicit CommandWindow(Terminal& term, std::string title = "Commands", int x = 1, int y = 1,
-                           int width = 25, int height = 10, std::string border_color = "#FFFFFF",
-                           std::string text_color = "#FFFFFF")
-        : Window(term, std::move(title), x, y, width, height, std::move(border_color),
-                 std::move(text_color)) {}
+                           int width = 25, int height = 10,
+                           std::map<std::string, std::string> hint_map = {},
+                           std::string border_color = "#FFFFFF", std::string text_color = "#FFFFFF")
+        : Window(term, std::move(title), x, y, width, height, std::move(hint_map),
+                 std::move(border_color), std::move(text_color)) {}
 
     // 注入：所有窗口名（按横向顺序显示）
     void setTabs(std::vector<std::string> tabs) { tabs_ = std::move(tabs); }

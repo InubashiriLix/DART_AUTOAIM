@@ -115,6 +115,8 @@ sensor_msgs::msg::Image::ConstSharedPtr CameraPublisher::get_latest_iamge_msg() 
     return latest_img_;
 }
 
+double CameraPublisher::get_cam_trans_delay() { return camera->get_delay_double_ms(); }
+
 sensor_msgs::msg::CameraInfo CameraPublisher::get_camera_info_buf() { return _cam_info_buf; }
 
 CameraPublisher::~CameraPublisher() { stop(); }

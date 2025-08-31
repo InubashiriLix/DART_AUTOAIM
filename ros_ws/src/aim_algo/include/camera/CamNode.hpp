@@ -23,6 +23,13 @@ class CameraPublisher : public rclcpp::Node {
     void stop();
     bool is_running() const;
 
+    /**
+     * @brief get the actual delay in
+     *
+     * @return [TODO:return]
+     */
+    double get_cam_trans_delay();
+
     sensor_msgs::msg::Image::ConstSharedPtr get_latest_iamge_msg();
     sensor_msgs::msg::CameraInfo get_camera_info_buf();
 

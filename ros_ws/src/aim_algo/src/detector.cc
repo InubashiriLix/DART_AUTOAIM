@@ -179,6 +179,9 @@ void Detector::kf_worker() {
         _meas_seq_seen = seq_now;  // mark measurement consumed (if any)
 
         // TODO: measure / calculate the real time needed to be predict
+        // TODO: get the actual delay of camera usb3
+        _preview_ms.store(to_ms(this->now()) - km.img_target_time_stamp +
+                          int(_cam_node->get_cam_trans_delay()));
         const int64_t horizon_ms = _preview_ms.load(std::memory_order_relaxed);  // dynamic preview
         auto [dp_deg, dy_deg] = _kf.predictDeltaAt(km, horizon_ms);
 

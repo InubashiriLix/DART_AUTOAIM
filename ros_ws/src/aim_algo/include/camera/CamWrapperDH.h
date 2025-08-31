@@ -5,20 +5,22 @@
 #ifndef GMASTER_WM_NEW_CAMWRAPPERDH_H
 #define GMASTER_WM_NEW_CAMWRAPPERDH_H
 
-#include <iostream>
-#include <thread>
 #include <glog/logging.h>
+
+#include <iostream>
 #include <opencv2/opencv.hpp>
+#include <thread>
+
+#include "CamWrapper.h"
 #include "DxImageProc.h"
 #include "GxIAPI.h"
-#include "CamWrapper.h"
 
 class DHCamera : public Camera {
     friend void getRGBImage(DHCamera *p_cam);
 
     friend void GX_STDC OnFrameCallbackFun(GX_FRAME_CALLBACK_PARAM *pFrame);
 
-private:
+   private:
     std::string sn;
     GX_STATUS status;
 
@@ -44,20 +46,22 @@ private:
     std::mutex pimg_lock;
     std::chrono::steady_clock::time_point fps_time_point;
 
-public:
+   public:
     DHCamera(std::string sn);  // constructor, p_img is a pointer towards a
     // 640*640 8uc3 Mat type
     ~DHCamera();
 
-    bool init(int roi_x, int roi_y, int roi_w, int roi_h, float exposure,
-              float gain, bool isEnergy, float FPS, int nBinning)
-    final;  // camInit camera lib and do settings, be called firstly
+    bool init(int roi_x, int roi_y, int roi_w, int roi_h, float exposure, float gain, bool isEnergy,
+              float FPS,
+              int nBinning) final;  // camInit camera lib and do settings, be called firstly
     void setParam(float exposure, float gain) final;  // set exposure and gain
-    bool start() final;                    // start video stream
-    void stop() final;                     // stop receiving frames
-    void calcRoi();                        // autmatic resize parameters
-    bool init_is_successful() final;       // return video is available or not
+    bool start() final;                               // start video stream
+    void stop() final;                                // stop receiving frames
+    void calcRoi();                                   // autmatic resize parameters
+    bool init_is_successful() final;                  // return video is available or not
     bool read(cv::Mat &src) final;
+
+    double get_delay_double_ms() { return this->frame_get_time / this->frame_cnt; }
 };
 
-#endif //GMASTER_WM_NEW_CAMWRAPPERDH_H
+#endif  // GMASTER_WM_NEW_CAMWRAPPERDH_H

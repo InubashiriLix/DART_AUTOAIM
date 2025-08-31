@@ -1,3 +1,4 @@
+// Window.hpp
 #pragma once
 
 #include <algorithm>
@@ -49,14 +50,15 @@ class Window {
 
    public:
     explicit Window(Terminal& term, std::string title, int x = 1, int y = 10, int width = 25,
-                    int height = 25, std::string border_color = "#FFFFFF",
-                    std::string text_color = "#FFFFFF")
+                    int height = 25, std::map<std::string, std::string> hint_map = {},
+                    std::string border_color = "#FFFFFF", std::string text_color = "#FFFFFF")
         : term_(term),
           title_(std::move(title)),
           x_(x),
           y_(y),
           width_(width),
           height_(height),
+          hints_(std::move(hint_map)),
           border_color_(std::move(border_color)),
           text_color_(std::move(text_color)) {
         inverted_border_color_ = invertHexColor(border_color_);
@@ -69,33 +71,44 @@ class Window {
     void render() {
         const int iw = innerW();
         const int ih = innerH();
+        if (iw <= 0 || ih <= 0) return;
 
+        // ── Top border ──
         std::string title = title_;
         if ((int)title.size() > iw) title.resize(iw);
         std::string top = "┌" + title + repeat("─", iw - (int)title.size()) + "┐";
         term_.print(at(x_, y_) + top, 1, 1, border_color_, inverted_border_color_);
 
-        int temp_idx = 0;
-        for (temp_idx = 0; temp_idx < ih; ++temp_idx) {
-            const int gi = scroll_top_ + temp_idx;
-            std::string inner(iw, ' ');  // Default to empty line filled with spaces
+        // ── Inner area (draw each row in three parts: left border | content | right border) ──
+        for (int row = 0; row < ih; ++row) {
+            const int gi = scroll_top_ + row;
+
+            std::string inner(iw, ' ');
             if (gi < (int)keys_.size()) {
-                const std::string& key = keys_[gi];           // Use string as key
-                const std::string& content = items_.at(key);  // Direct access to value
+                const std::string& key = keys_[gi];
+                const std::string& content = items_.at(key);
                 std::string line = " " + key + " " + content;
                 if ((int)line.size() > iw)
                     line.resize(iw);
                 else
-                    line.append(iw - (int)line.size(), ' ');  // Ensure fixed width
-                inner.swap(line);                             // Place formatted content in the line
+                    line.append(iw - (int)line.size(), ' ');
+                inner.swap(line);
             }
+
             const bool is_cursor_line = (gi == cursor_idx_);
-            const std::string line = "│" + inner + "│";
-            term_.print(at(x_ + 1 + temp_idx - scroll_top_, y_) + line, 1, 1,
+
+            // 左竖线（边框色）
+            term_.print(at(x_ + 1 + row, y_) + "│", 1, 1, border_color_, inverted_border_color_);
+            // 内容（文本色/反色）
+            term_.print(at(x_ + 1 + row, y_ + 1) + inner, 1, 1,
                         is_cursor_line ? inverted_text_color_ : text_color_,
                         is_cursor_line ? text_color_ : inverted_text_color_);
+            // 右竖线（边框色）
+            term_.print(at(x_ + 1 + row, y_ + 1 + iw) + "│", 1, 1, border_color_,
+                        inverted_border_color_);
         }
 
+        // ── Bottom border ──
         std::string inner = repeat("─", iw);
         if ((int)keys_.size() > ih && !keys_.empty()) {
             int percent = (int)std::lround(100.0 * (cursor_idx_ + 1) / (double)keys_.size());
@@ -107,6 +120,9 @@ class Window {
         std::string bottom = "└" + inner + "┘";
         term_.print(at(x_ + height_ - 1, y_) + bottom, 1, 1, border_color_, inverted_border_color_);
     }
+
+    void setHints(std::map<std::string, std::string> hints) { hints_ = std::move(hints); }
+    const std::map<std::string, std::string>& getHints() const { return std::move(hints_); }
 
     void enableCursor(bool enable) {
         // ugly impl, but at least it works
@@ -188,15 +204,21 @@ class Window {
         return true;
     }
 
-    bool setBorderColor(const std::string& new_color) {
+    bool setBorderColor(const std::string& new_color, const std::string& inverted_color = "") {
         border_color_ = new_color;
-        inverted_border_color_ = invertHexColor(border_color_);
+        if (inverted_color.size() == 7 && inverted_color[0] == '#')
+            inverted_border_color_ = inverted_color;
+        else
+            inverted_border_color_ = invertHexColor(border_color_);
         return true;
     }
 
-    bool setTextColor(const std::string& new_color) {
-        text_color_ = new_color;
-        inverted_text_color_ = invertHexColor(text_color_);
+    bool setTextColor(const std::string& new_color, const std::string& inverted_color = "") {
+        border_color_ = new_color;
+        if (inverted_color.size() == 7 && inverted_color[0] == '#')
+            inverted_text_color_ = inverted_color;
+        else
+            inverted_text_color_ = invertHexColor(border_color_);
         return true;
     }
 
@@ -209,8 +231,8 @@ class Window {
     }
 
     bool setPosition(int x, int y) {
-        if (x > 1) x_ = x;
-        if (y > 1) y_ = y;
+        if (x > 0) x_ = x;
+        if (y > 0) y_ = y;
         return true;
     }
 
@@ -299,4 +321,6 @@ class Window {
     std::string inverted_border_color_ = "#000000";
     std::string text_color_ = "#FFFFFF";
     std::string inverted_text_color_ = "#000000";
+
+    std::map<std::string, std::string> hints_;
 };

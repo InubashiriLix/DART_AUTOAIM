@@ -244,6 +244,7 @@ class Window {
         return oss.str();
     }
 
+   protected:
     static std::string repeat(const std::string& s, int n) {
         if (n <= 0) return {};
         std::string result;
@@ -251,7 +252,6 @@ class Window {
         for (int i = 0; i < n; ++i) result += s;
         return result;
     }
-
     // ANSI absolute positioning
     static std::string at(int row, int col) {
         return "\033[" + std::to_string(row) + ";" + std::to_string(col) + "H";
@@ -260,6 +260,7 @@ class Window {
     int innerW() const { return std::max(0, width_ - 2); }
     int innerH() const { return std::max(0, height_ - 2); }
 
+   private:
     void rebuildKeys() {
         keys_.clear();
         keys_.reserve(items_.size());
@@ -281,21 +282,21 @@ class Window {
         if (cursor_idx_ >= scroll_top_ + ih) scroll_top_ = std::min(cursor_idx_, max_top);
     }
 
-   private:
+   protected:
     Terminal& term_;
     std::string title_;
     int x_, y_;
+
+    // Cursor & scrolling
+    int cursor_idx_ = 0;  // Absolute index in keys_
+    int scroll_top_ = 0;  // Top of the visible window in keys_
+    // Data: map & ordered key list
+    std::map<std::string, std::string> items_;
+    std::vector<std::string> keys_;
+
     int width_, height_;
     std::string border_color_ = "#FFFFFF";
     std::string inverted_border_color_ = "#000000";
     std::string text_color_ = "#FFFFFF";
     std::string inverted_text_color_ = "#000000";
-
-    // Data: map & ordered key list
-    std::map<std::string, std::string> items_;
-    std::vector<std::string> keys_;
-
-    // Cursor & scrolling
-    int cursor_idx_ = 0;  // Absolute index in keys_
-    int scroll_top_ = 0;  // Top of the visible window in keys_
 };

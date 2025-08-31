@@ -1,3 +1,4 @@
+// Tui.hpp
 #pragma once
 #include <atomic>
 #include <functional>
@@ -11,31 +12,22 @@
 #include "Terminal.hpp"
 #include "Window.hpp"
 
-struct Menu {
-    explicit Menu(Window& cmd, Window& detector, Window& cam, Window& kalman, Window& contact)
-        : cmd_(cmd), detector_(detector), cam_(cam), kalman_(kalman), contact_(contact) {}
-
-    Window& cmd_;
-    Window& detector_;
-    Window& cam_;
-    Window& kalman_;
-    Window& contact_;
-
-    Window* current_;
-
-    std::stack<std::reference_wrapper<Window>> history_;  // 存放引用包装器
-};
-
 class Tui {
    public:
-    explicit Tui(Terminal& term) : term_(term) {}
+    explicit Tui(Terminal& term) : term_(term) {
+        this->cmd_win_.setHints(this->cmd_win_.getHints());
+        this->cmd_win_.setBorderColor("#FFFF00", "#000000");
+    }
     ~Tui() { stop(); }
 
     bool isRunning() const { return running_.load(); }
 
     void prepareWindows() {
         {
-            menu_.current_ = &cmd_win_;
+            last_win_ = nullptr;
+            current_win_ = &cmd_win_;
+            single_target_ = &detector_win_;
+
             cmd_win_.setTabs(this->_tabs_vec_);
             cmd_win_.setActiveTab(0);
 
@@ -44,61 +36,47 @@ class Tui {
 
             // Detector
             cmd_win_.setAction("D", [this](Window::Ctx& ctx) {
-                this->menu_.current_ = &this->detector_win_;
-                this->cmd_win_.setActiveTab(1);
+                switch_to(detector_win_, 1);  // 统一切换路径
             });
             // Camera
-            cmd_win_.setAction("C", [this](Window::Ctx& ctx) {
-                this->menu_.current_ = &this->cam_win_;
-                this->cmd_win_.setActiveTab(2);
-            });
+            cmd_win_.setAction("C", [this](Window::Ctx& ctx) { switch_to(cam_win_, 2); });
             // kalman
-            cmd_win_.setAction("K", [this](Window::Ctx& ctx) {
-                this->menu_.current_ = &this->kalman_win_;
-                this->cmd_win_.setActiveTab(3);
-            });
+            cmd_win_.setAction("K", [this](Window::Ctx& ctx) { switch_to(kalman_win_, 3); });
             // contact
-            cmd_win_.setAction("c", [this](Window::Ctx& ctx) {
-                this->menu_.current_ = &this->contact_win_;
-                this->cmd_win_.setActiveTab(4);
+            cmd_win_.setAction("c", [this](Window::Ctx& ctx) { switch_to(contact_win_, 4); });
+            cmd_win_.setAction("Q", [this](Window::Ctx& ctx) { stop(); });
+            cmd_win_.setAction("t", [this](Window::Ctx& ctx) {
+                toggle_display();
+                cmd_dirty_.store(true, std::memory_order_release);
             });
-            cmd_win_.setAction("Quit", [this](Window::Ctx& ctx) { stop(); });
         }
 
+        // detector config
         {
             detector_win_.setAction("j", [](Window::Ctx& ctx) { ctx.moveDown(); });
             detector_win_.setAction("k", [](Window::Ctx& ctx) { ctx.moveUp(); });
-            detector_win_.setAction("q", [this](Window::Ctx& ctx) {
-                this->menu_.current_ = &this->cmd_win_;
-                this->cmd_win_.setActiveTab(0);
-            });
+            detector_win_.setAction("q", [this](Window::Ctx& ctx) { switch_to(cmd_win_, 0); });
         }
 
+        // cam win config
         {
             cam_win_.setAction("j", [](Window::Ctx& ctx) { ctx.moveDown(); });
             cam_win_.setAction("k", [](Window::Ctx& ctx) { ctx.moveUp(); });
-            cam_win_.setAction("q", [this](Window::Ctx& ctx) {
-                this->menu_.current_ = &this->cmd_win_;
-                this->cmd_win_.setActiveTab(0);
-            });
+            cam_win_.setAction("q", [this](Window::Ctx& ctx) { switch_to(cmd_win_, 0); });
         }
 
+        // kalman win config
         {
             kalman_win_.setAction("j", [](Window::Ctx& ctx) { ctx.moveDown(); });
             kalman_win_.setAction("k", [](Window::Ctx& ctx) { ctx.moveUp(); });
-            kalman_win_.setAction("q", [this](Window::Ctx& ctx) {
-                this->menu_.current_ = &this->cmd_win_;
-                this->cmd_win_.setActiveTab(0);
-            });
+            kalman_win_.setAction("q", [this](Window::Ctx& ctx) { switch_to(cmd_win_, 0); });
         }
 
+        // contact win config
         {
             contact_win_.setAction("j", [](Window::Ctx& ctx) { ctx.moveDown(); });
             contact_win_.setAction("k", [](Window::Ctx& ctx) { ctx.moveUp(); });
-            contact_win_.setAction("q", [this](Window::Ctx& ctx) {
-                this->menu_.current_ = &this->cmd_win_;
-                this->cmd_win_.setActiveTab(0);
-            });
+            contact_win_.setAction("q", [this](Window::Ctx& ctx) { switch_to(cmd_win_, 0); });
         }
     }
 
@@ -111,14 +89,15 @@ class Tui {
                     2, 1, "#00FF00");
 
         _input_thread_ = std::thread(&Tui::inputThreadWorker, this);
-        // 建议把渲染线程也开上，不然看不到刷新
+        // 启动时先画一次状态栏
+        this->cmd_win_.render();
+        cmd_dirty_.store(false, std::memory_order_release);
         _windows_thread_ = std::thread(&Tui::windowsThreadWorker, this);
 
         return true;
     }
 
     bool stop() {
-        // 只处理一次
         if (!running_.exchange(false, std::memory_order_relaxed)) return true;
 
         if (_input_thread_.joinable()) _input_thread_.join();
@@ -130,7 +109,7 @@ class Tui {
         while (running_.load()) {
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
             char ch = term_.nonblocking_input();
-            if (ch != '\0') input_char_queue_.push(ch);
+            if (ch != '\0') (void)input_char_queue_.push(ch);
         }
     }
 
@@ -146,12 +125,35 @@ class Tui {
                 continue;
             }
 
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
-            cmd_win_.render();
-            detector_win_.render();
-            cam_win_.render();
-            kalman_win_.render();
-            contact_win_.render();
+            char ch = '\0';
+            if (input_char_queue_.pop(ch) && ch != '\0') {
+                this->current_win_->runAction(std::string(1, ch));
+                // std::cout << "get input: " << ch << std::endl;
+            }
+
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+            if (full_redraw_.exchange(false, std::memory_order_acq_rel)) {
+                term_.clear();
+            }
+
+            if (cmd_dirty_.exchange(false, std::memory_order_acq_rel)) {
+                std::lock_guard<std::mutex> lk(cmd_bar_mtx_);
+                cmd_win_.render();
+            }
+
+            auto single_dis = single_display_.load(std::memory_order_acquire);
+            if (!single_dis) {
+                detector_win_.render();
+                cam_win_.render();
+                kalman_win_.render();
+                contact_win_.render();
+            } else {
+                Window* w = single_target_;
+                if (w && w != &cmd_win_) {
+                    w->render();
+                }
+            }
         }
     }
     void infoUpdateThreadWorker() {}
@@ -159,13 +161,23 @@ class Tui {
    private:
     Terminal& term_;
 
-    CommandWindow cmd_win_{term_, "Command", 36, 1, 120, 5};
-    Window detector_win_{term_, "Detector", 1, 1, 30, 35};
-    Window cam_win_{term_, "Camera", 1, 31, 30, 35};
-    Window kalman_win_{term_, "Kalman Filter", 1, 61, 30, 35};
-    Window contact_win_{term_, "Contact", 1, 91, 30, 35};
+    // WARNING: cause' the std::move, these two hints are null after initializing windows objs!!!
+    // and also, the tui class should be long-lived, otherwise the references in windows are
+    // dangling
+    std::map<std::string, std::string> _cmd_hints_ = {{"D", "Detector"}, {"C", "Camera"},
+                                                      {"K", "Kalman"},   {"c", "Contact"},
+                                                      {"Q", "Quit UI"},  {"t", "Toggle Display"}};
+    std::map<std::string, std::string> _common_hints_ = {{"j/k", "Move"}, {"q", "Back to Command"}};
 
-    Menu menu_{cmd_win_, detector_win_, cam_win_, kalman_win_, contact_win_};
+    CommandWindow cmd_win_{term_, "Command", 36, 1, 120, 5, _cmd_hints_};
+    Window detector_win_{term_, "Detector", 1, 1, 30, 35, _common_hints_};
+    Window cam_win_{term_, "Camera", 1, 31, 30, 35, _common_hints_};
+    Window kalman_win_{term_, "Kalman Filter", 1, 61, 30, 35, _common_hints_};
+    Window contact_win_{term_, "Contact", 1, 91, 30, 35, _common_hints_};
+
+    Window* current_win_ = &cmd_win_;
+    Window* last_win_ = nullptr;
+    Window* single_target_ = nullptr;
 
     SPSCQueue<char, 1024> input_char_queue_;
 
@@ -175,4 +187,66 @@ class Tui {
     std::atomic<bool> running_{false};
 
     std::vector<std::string> _tabs_vec_ = {"Command", "Detector", "Camera", "Kalman", "Contact"};
+
+    std::atomic<bool> single_display_ = false;
+
+    std::atomic<bool> cmd_dirty_{true};
+    std::mutex cmd_bar_mtx_;
+
+    std::atomic<bool> full_redraw_{false};
+
+    bool toggle_display() {
+        auto temp = single_display_.exchange(!single_display_.load(std::memory_order_acquire),
+                                             std::memory_order_release);
+        auto single_dis = single_display_.load(std::memory_order_acquire);
+
+        detector_win_.setPosition(1, single_dis ? 1 : 1);
+        detector_win_.setSize(single_dis ? 120 : 30, 35);
+
+        cam_win_.setPosition(1, single_dis ? 1 : 31);
+        cam_win_.setSize(single_dis ? 120 : 30, 35);
+
+        kalman_win_.setPosition(1, single_dis ? 1 : 61);
+        kalman_win_.setSize(single_dis ? 120 : 30, 35);
+
+        contact_win_.setPosition(1, single_dis ? 1 : 91);
+        contact_win_.setSize(single_dis ? 120 : 30, 35);
+
+        if (single_dis) {
+            if (current_win_ != &cmd_win_) {
+                single_target_ = current_win_;
+            } else if (last_win_ && last_win_ != &cmd_win_) {
+                single_target_ = last_win_;
+            } else {
+                single_target_ = &detector_win_;
+            }
+        }
+
+        full_redraw_.store(true, std::memory_order_release);
+        cmd_dirty_.store(true, std::memory_order_release);
+
+        return temp;
+    }
+
+    void exchangeFocusWinColor(Window& from, Window& to) {
+        from.setBorderColor("#FFFFFF", "#000000");
+        to.setBorderColor("#FFFF00", "#000000");
+    }
+
+    void switch_to(Window& to, int tab_idx) {
+        if (current_win_ != &to) last_win_ = current_win_;
+        Window* from = current_win_;
+        current_win_ = &to;
+
+        {
+            std::lock_guard<std::mutex> lk(cmd_bar_mtx_);
+            cmd_win_.setActiveTab(tab_idx);
+            cmd_win_.setHints(to.getHints());
+            if (from) exchangeFocusWinColor(*from, to);
+        }
+        if (&to != &cmd_win_) {
+            single_target_ = &to;
+        }
+        cmd_dirty_.store(true, std::memory_order_release);
+    }
 };

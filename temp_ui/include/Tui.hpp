@@ -48,7 +48,7 @@ class Tui {
             cmd_win_.setActiveTab(0);
 
             cmd_win_.enableCursor(false);
-            cmd_win_.setOnReturn([this] { stop(); });
+            cmd_win_.setOnReturn([this] { request_stop(); });
 
             // Detector
             cmd_win_.setAction("D", [this](Window::Ctx& ctx) {
@@ -60,7 +60,7 @@ class Tui {
             cmd_win_.setAction("K", [this](Window::Ctx& ctx) { switch_to(kalman_win_, 3); });
             // contact
             cmd_win_.setAction("c", [this](Window::Ctx& ctx) { switch_to(contact_win_, 4); });
-            cmd_win_.setAction("Q", [this](Window::Ctx& ctx) { stop(); });
+            cmd_win_.setAction("Q", [this](Window::Ctx& ctx) { request_stop(); });
             cmd_win_.setAction("t", [this](Window::Ctx& ctx) {
                 toggle_display();
                 cmd_dirty_.store(true, std::memory_order_release);
@@ -114,12 +114,18 @@ class Tui {
         return true;
     }
 
-    bool stop() {
-        if (!running_.exchange(false, std::memory_order_relaxed)) return true;
+    void request_stop() { running_.store(false, std::memory_order_relaxed); }
 
-        if (_input_thread_.joinable()) _input_thread_.join();
-        if (_windows_thread_.joinable()) _windows_thread_.join();
-        if (_info_update_thread_.joinable()) _info_update_thread_.join();
+    // 真正的停止 + join（建议主线程/析构里调用）
+    bool stop() {
+        running_.store(false, std::memory_order_relaxed);
+        const auto self = std::this_thread::get_id();
+
+        if (_input_thread_.joinable() && _input_thread_.get_id() != self) _input_thread_.join();
+        if (_windows_thread_.joinable() && _windows_thread_.get_id() != self)
+            _windows_thread_.join();
+        if (_info_update_thread_.joinable() && _info_update_thread_.get_id() != self)
+            _info_update_thread_.join();
         return true;
     }
 

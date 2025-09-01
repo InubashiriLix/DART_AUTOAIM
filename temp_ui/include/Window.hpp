@@ -7,6 +7,7 @@
 #include <iomanip>
 #include <iostream>
 #include <map>
+#include <memory>
 #include <sstream>
 #include <string>
 #include <unordered_map>
@@ -163,15 +164,44 @@ class Window {
     }
 
     /**
+     * @brief the set display map using a shared pointer to a map
+     * NOTED that tis is used to get the data from a LatestChannel class
+     *
+     * @param m std::shared_ptr<std::map<std::string, std::string>>
+     */
+    void setDisplayMap(const std::shared_ptr<const std::map<std::string, std::string>>& m) {
+        if (m) {
+            items_ = *m;
+            rebuildKeys();
+            clampCursorAndScroll();
+        }
+    }
+
+    void setDisplayMapValuesOnly(const std::map<std::string, std::string>& m) {
+        for (auto& kv : items_) {
+            auto it = m.find(kv.first);
+            if (it != m.end()) {
+                if (kv.second != it->second) kv.second = it->second;
+            }
+        }
+    }
+
+    void setDisplayMapValuesOnly(
+        const std::shared_ptr<const std::map<std::string, std::string>>& m) {
+        if (m) setDisplayMapValuesOnly(*m);
+    }
+
+    /**
      * @brief add or update a line in the map by key
      *
      * @param key std::string
      * @param content std::string the content to set
      */
-    void setLineByKey(const std::string& key, const std::string& content) {
+    void setLineByKey(const std::string& key, const std::string& content, bool rebuild_idx = false,
+                      bool clamp_cursor_and_scroll = false) {
         items_[key] = content;
-        rebuildKeys();
-        clampCursorAndScroll();
+        if (rebuild_idx) rebuildKeys();
+        if (clamp_cursor_and_scroll) clampCursorAndScroll();
     }
 
     // Update content by key

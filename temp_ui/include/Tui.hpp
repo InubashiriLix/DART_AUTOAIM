@@ -1,20 +1,36 @@
 // Tui.hpp
 #pragma once
+
 #include <atomic>
 #include <functional>
 #include <mutex>
+#include <ranges>
 #include <stack>
 #include <string>
 #include <thread>
 
 #include "CommandWindow.hpp"
+#include "LatestChannel.hpp"
 #include "SPSCQueue.hpp"
 #include "Terminal.hpp"
 #include "Window.hpp"
 
+namespace tui {
+
+using LtxChanStrMapType = LatestChannel<std::map<std::string, std::string>>;
+using msg_ptr_type = std::shared_ptr<const std::map<std::string, std::string>>;
+
 class Tui {
    public:
-    explicit Tui(Terminal& term) : term_(term) {
+    explicit Tui(Terminal& term, std::shared_ptr<LtxChanStrMapType> detector_channel,
+                 std::shared_ptr<LtxChanStrMapType> cam_channel,
+                 std::shared_ptr<LtxChanStrMapType> kalman_channel,
+                 std::shared_ptr<LtxChanStrMapType> contact_channel)
+        : term_(term),
+          detector_channel_(detector_channel),
+          cam_channel_(cam_channel),
+          kalman_channel_(kalman_channel),
+          contact_channel_(contact_channel) {
         this->cmd_win_.setHints(this->cmd_win_.getHints());
         this->cmd_win_.setBorderColor("#FFFF00", "#000000");
     }
@@ -93,6 +109,7 @@ class Tui {
         this->cmd_win_.render();
         cmd_dirty_.store(false, std::memory_order_release);
         _windows_thread_ = std::thread(&Tui::windowsThreadWorker, this);
+        _info_update_thread_ = std::thread(&Tui::infoUpdateThreadWorker, this);
 
         return true;
     }
@@ -102,6 +119,7 @@ class Tui {
 
         if (_input_thread_.joinable()) _input_thread_.join();
         if (_windows_thread_.joinable()) _windows_thread_.join();
+        if (_info_update_thread_.joinable()) _info_update_thread_.join();
         return true;
     }
 
@@ -156,7 +174,32 @@ class Tui {
             }
         }
     }
-    void infoUpdateThreadWorker() {}
+
+    void infoUpdateThreadWorker() {
+        while (running_.load(std::memory_order_acq_rel)) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+
+            // detector
+            auto detector_data = detector_channel_->get();
+            conciseSetDisplayMap(detector_win_, detector_data, last_detector_data_);
+            last_detector_data_ = detector_data;
+
+            // cam
+            auto cam_data = cam_channel_->get();
+            conciseSetDisplayMap(cam_win_, cam_data, last_cam_data_);
+            last_cam_data_ = cam_data;
+
+            // kalman
+            auto kalman_data = kalman_channel_->get();
+            conciseSetDisplayMap(kalman_win_, kalman_data, last_kalman_data_);
+            last_kalman_data_ = kalman_data;
+
+            // contact
+            auto contact_data = contact_channel_->get();
+            conciseSetDisplayMap(contact_win_, contact_data, last_contact_data_);
+            last_contact_data_ = contact_data;
+        }
+    }
 
    private:
     Terminal& term_;
@@ -185,6 +228,21 @@ class Tui {
     std::thread _windows_thread_;
     std::thread _info_update_thread_;
     std::atomic<bool> running_{false};
+
+    // the channnel required to update the cannel;
+    // the detector channel
+    std::shared_ptr<LtxChanStrMapType> detector_channel_;
+    // the cam channel
+    std::shared_ptr<LtxChanStrMapType> cam_channel_;
+    // the kalman channel
+    std::shared_ptr<LtxChanStrMapType> kalman_channel_;
+    // the contact channnel
+    std::shared_ptr<LtxChanStrMapType> contact_channel_;
+
+    std::shared_ptr<const std::map<std::string, std::string>> last_detector_data_;
+    std::shared_ptr<const std::map<std::string, std::string>> last_cam_data_;
+    std::shared_ptr<const std::map<std::string, std::string>> last_kalman_data_;
+    std::shared_ptr<const std::map<std::string, std::string>> last_contact_data_;
 
     std::vector<std::string> _tabs_vec_ = {"Command", "Detector", "Camera", "Kalman", "Contact"};
 
@@ -249,4 +307,23 @@ class Tui {
         }
         cmd_dirty_.store(true, std::memory_order_release);
     }
+
+    inline bool same_keys20(const msg_ptr_type& a, const msg_ptr_type& b) {  // NOTE: require cpp20
+        if (a == b) return true;
+        if (!a || !b || a->size() != b->size()) return false;
+        return std::ranges::equal(
+            *a, *b, [](auto const& lhs, auto const& rhs) { return lhs.first == rhs.first; });
+    }
+
+    void conciseSetDisplayMap(Window& win, const msg_ptr_type& data,
+                              const msg_ptr_type& last_data) {
+        if (!data) return;
+        if (same_keys20(data, last_data)) {
+            win.setDisplayMapValuesOnly(data);
+        } else {
+            win.setDisplayMap(data);
+        }
+    }
 };
+
+}  // namespace tui

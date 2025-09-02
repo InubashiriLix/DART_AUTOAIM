@@ -25,7 +25,7 @@ struct camera_config {
 
     camera_config(
         const std::string& sub_table_name = "camera1",
-        const std::string& toml_abs_path = "/home/orangepi/08_DART_AUTOAIM/ros_ws/config.toml") {
+        const std::string& toml_abs_path = "/home/inubashiri/17_DART_AUTOAIM/ros_ws/config.toml") {
         auto config = toml::parse_file(toml_abs_path);
 
         try {
@@ -79,8 +79,8 @@ struct detector_config {
     bool SHOW_TARGET_ANGLE = false;
     int target_lost_threshold_ms = 300;
 
-    detector_config(
-        const std::string toml_abs_path_str = "/home/orangepi/08_DART_AUTOAIM/ros_ws/config.toml") {
+    detector_config(const std::string toml_abs_path_str =
+                        "/home/inubashiri/17_DART_AUTOAIM/ros_ws/config.toml") {
         auto config = toml::parse_file(toml_abs_path_str);
 
         try {
@@ -117,8 +117,8 @@ struct contact_config {
     uint8_t header = 0xA3;               // 下发帧头
     bool require_rx_before_send = true;  // 未收到首帧 RX 前是否禁止下发
     //
-    contact_config(
-        const std::string toml_abs_path_str = "/home/orangepi/08_DART_AUTOAIM/ros_ws/config.toml") {
+    contact_config(const std::string toml_abs_path_str =
+                       "/home/inubashiri/17_DART_AUTOAIM/ros_ws/config.toml") {
         auto config = toml::parse_file(toml_abs_path_str);
         try {
             const auto* contact_conf = config["contact"].as_table();

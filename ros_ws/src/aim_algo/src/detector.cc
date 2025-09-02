@@ -288,7 +288,7 @@ bool Detector::start() {
     _th_worker = std::thread([this] { this->detector_worker(); });
     _th_contact = std::thread([this] { this->contact_worker(); });
     _kf = Kalman();
-    _kf.loadFromToml("/home/orangepi/08_DART_AUTOAIM/ros_ws/config.toml", "kalman");
+    _kf.loadFromToml("/home/inubashiri/17_DART_AUTOAIM/ros_ws/config.toml", "kalman");
     _th_kf = std::thread([this] { this->kf_worker(); });
 
     if (_config.SHOW_CV_MONITOR_WINDOWS) _th_ui = std::thread([this] { this->ui_worker(); });

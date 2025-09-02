@@ -9,3 +9,5 @@ yolo8_prototype/src/dataset
 yolo8_prototype/src/runs
 yolo8_prototype/src/yolo11n.pt
 temp_ui/build
+armor_detector/build
+armor_detector/.cache

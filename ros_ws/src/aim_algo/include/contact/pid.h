@@ -21,8 +21,7 @@ class PIDController {
    public:
     // PID 控制器的增益系数
     std::string session_name_ = "";
-    pid_config config =
-        read_toml("/home/nuc2/contact_node/src/contact/pid_config.toml", session_name_);
+    pid_config config = read_toml("pid_config.toml", session_name_);
 
     // 存储当前的误差、误差的累计值和误差的变化率
     double prevError = 0.0;

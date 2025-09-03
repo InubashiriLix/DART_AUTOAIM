@@ -1,4 +1,4 @@
-// localcam/DHLocalCam.hpp
+// LLocalCam.hpp
 #pragma once
 #include <atomic>
 #include <chrono>
@@ -13,73 +13,73 @@
 #include <vector>
 
 #include "LatestChannel.hpp"
-#include "camera/CamWrapper.h"
-#include "camera/CamWrapperDH.h"
+#include "camera/CamWrapperDH.h"  // 直接用大恒相机封装；若要多机型可自行扩展
 
 namespace localcam {
 
-// ===== 通道与消息格式（与原 LocalCam 保持一致）=====
 using Mat = cv::Mat;
-// 注意：第二个字段是时间戳（ms, 单调时钟）。如需更安全可改成 int64_t 并同步改 LatestChannel 模板。
+// 注意：为兼容你现有代码，这里时间戳仍用 int（ms）。更稳妥可改成 int64_t。
 using Msg = std::pair<Mat, int>;
 using MatChannel = LatestChannel<Msg>;
 
-// ===== 运行配置（纯 C++，不依赖 ROS）=====
-struct DHLocalCamConfig {
+struct LLocalCamConfig {
     // 硬件
-    std::string SN = "FGV22100004";  // 大恒相机序列号（空串=第一个）
-    bool FOR_PC = true;              // 与 CamNode 同名，false 时不启设备（便于在无机环境编译）
+    std::string SN = "FGV22100004";  // 空串=第一个
+    bool FOR_PC = true;
 
     // 采集
-    int FPS = 120;                 // 期望相机帧率（传给 SDK）
-    int frame_refresh_rate = 120;  // 轮询读取频率（Hz）
-    bool IS_ROTATE = false;        // 采集后是否旋转 180°
-    int avg_frame_delay_num = 60;  // 每 N 帧打印一次平均耗时（stdout）
-    bool PRINT_STATS = true;       // 是否打印采集耗时
+    int FPS = 120;
+    int frame_refresh_rate = 120;  // 轮询频率（Hz）
+    bool IS_ROTATE = false;
+    int avg_frame_delay_num = 60;  // 每 N 帧统计一次耗时
+    bool PRINT_STATS = true;
 
-    // ROI / binning / 传感器尺寸（与 CamNode 同步）
+    // ROI / 传感器
     int nBinning = 1;
     int sensor_width = 1280;
     int sensor_height = 1024;
     int ROI_width = 1280;
     int ROI_height = 1024;
 
-    // 相机内参默认值（与 CamNode::prepare_cam_info 的常量一致，可外部覆写）
+    // 内参（示例默认，与 ROS 版保持一致，外部可覆盖）
     double K_fx = 1557.2, K_fy = 1557.5, K_cx = 638.7311, K_cy = 515.1176, K_s = 0.2065;
     cv::Mat D = (cv::Mat_<double>(1, 5) << -0.1295, 0.0804, 4.85e-04, 6.37e-04, 0.2375);
 
-    // 发布时是否深拷贝（默认 false：零拷贝 header；如担心底层缓冲被复用，可设为 true）
-    bool DEEP_COPY_ON_PUBLISH = false;
+    // 发布时是否深拷贝（强烈建议 true，避免 SDK 复用缓冲导致 UAF）
+    bool DEEP_COPY_ON_PUBLISH = true;
+
+    // 额外相机参数（按需扩展）
+    int exposure_us = 1500;
+    int gain = 16;
+    bool hw_trigger = false;
 };
 
-class DHLocalCam {
+class LLocalCam {
    public:
-    DHLocalCam(std::shared_ptr<MatChannel> output_channel, const DHLocalCamConfig& cfg)
+    LLocalCam(std::shared_ptr<MatChannel> output_channel, const LLocalCamConfig& cfg)
         : cfg_(cfg), output_channel_(std::move(output_channel)) {
         compute_cam_info_();
     }
 
-    ~DHLocalCam() { stop(); }
+    ~LLocalCam() { stop(); }
 
-    // 启停（start 成功后后台线程开始采集并不断 publish 到 channel）
+    // 启动采集线程
     bool start() {
         if (running_.exchange(true, std::memory_order_acq_rel)) return true;
 
         if (!cfg_.FOR_PC) {
-            // 与 CamNode 行为一致：不启设备
             running_.store(false, std::memory_order_release);
             return false;
         }
-
         if (!open_camera_()) {
             running_.store(false, std::memory_order_release);
             return false;
         }
-
         th_worker_ = std::thread([this] { worker_loop_(); });
         return true;
     }
 
+    // 停止采集线程
     void stop() {
         if (!running_.exchange(false, std::memory_order_acq_rel)) return;
         if (th_worker_.joinable()) th_worker_.join();
@@ -88,13 +88,13 @@ class DHLocalCam {
 
     bool isRunning() const { return running_.load(std::memory_order_relaxed); }
 
-    // 读取相机 SDK 给的传输/缓存延迟（若 SDK 支持）
+    // 可选：读取 SDK 传输/缓存延迟（若 SDK 支持的话）
     double get_cam_trans_delay_ms() const {
         if (!camera_) return 0.0;
-        return 0;
+        return 0.0;
     }
 
-    // 内参访问（深拷贝返回）
+    // 内参访问
     cv::Mat getK() const { return K_.clone(); }
     cv::Mat getD() const { return D_.clone(); }
     cv::Mat getP3x3() const { return P3x3_.clone(); }
@@ -102,7 +102,6 @@ class DHLocalCam {
    private:
     using clock_t = std::chrono::steady_clock;
 
-    // ===== 内部工具 =====
     static inline int mono_ms_() {
         using namespace std::chrono;
         return static_cast<int>(
@@ -110,7 +109,6 @@ class DHLocalCam {
     }
 
     void compute_cam_info_() {
-        // 与 CamNode::prepare_cam_info 的推导保持一致
         int nB = std::max(1, cfg_.nBinning);
         const int sensor_w = cfg_.sensor_width;
         const int sensor_h = cfg_.sensor_height;
@@ -130,24 +128,21 @@ class DHLocalCam {
     }
 
     bool open_camera_() {
-        std::cout << "opening cam with SN" << cfg_.SN << std::endl;
-        camera_ = new DHCamera("FGV22100004");
-        // ROI 居中
+        std::cout << "[LLocalCam] opening DHCamera SN=" << (cfg_.SN.empty() ? "<first>" : cfg_.SN)
+                  << std::endl;
+        camera_ = std::make_unique<DHCamera>(cfg_.SN);
+
         int offx = (cfg_.sensor_width / std::max(1, cfg_.nBinning) - cfg_.ROI_width) / 2;
         int offy = (cfg_.sensor_height / std::max(1, cfg_.nBinning) - cfg_.ROI_height) / 2;
 
-        // init(offsetX, offsetY, ROI_W, ROI_H, exposure(us), gain, isHWTrigger, fps, binning)
-        bool ok = camera_->init(offx, offy, cfg_.ROI_width, cfg_.ROI_height,
-                                /*exposure_us=*/1500, /*gain=*/16,
-                                /*hw_trigger=*/false, cfg_.FPS, cfg_.nBinning);
+        bool ok = camera_->init(offx, offy, cfg_.ROI_width, cfg_.ROI_height, cfg_.exposure_us,
+                                cfg_.gain, cfg_.hw_trigger, cfg_.FPS, cfg_.nBinning);
         if (!ok) {
-            // delete camera_;
-            camera_ = nullptr;
+            camera_.reset();
             return false;
         }
         if (!camera_->start()) {
-            // delete camera_;
-            camera_ = nullptr;
+            camera_.reset();
             return false;
         }
         return true;
@@ -156,13 +151,11 @@ class DHLocalCam {
     void close_camera_() {
         if (camera_) {
             camera_->stop();
-            // delete camera_;
-            camera_ = nullptr;
+            camera_.reset();
         }
     }
 
     void worker_loop_() {
-        // 与 CamNode 同样的固定周期轮询
         const int hz = std::max(1, cfg_.frame_refresh_rate);
         const auto period = std::chrono::milliseconds(1000 / hz);
         auto next_tick = clock_t::now();
@@ -183,19 +176,16 @@ class DHLocalCam {
 
             if (cfg_.IS_ROTATE) cv::rotate(frame, frame, cv::ROTATE_180);
 
-            int ts = mono_ms_();
+            // 强烈建议深拷贝后再发布，避免 SDK 复用缓冲导致悬挂
+            cv::Mat msg_frame = cfg_.DEEP_COPY_ON_PUBLISH ? frame.clone() : frame;
 
-            if (cfg_.DEEP_COPY_ON_PUBLISH) {
-                // 安全但更慢：深拷贝一份
-                auto msg = std::make_shared<const Msg>(frame.clone(), ts);
-                output_channel_->publish(msg);
-            } else {
-                // 快速：零拷贝 header（注意底层缓冲复用风险，按需切换到深拷贝）
-                auto msg = std::make_shared<const Msg>(std::move(frame), ts);
+            int ts = mono_ms_();
+            if (output_channel_) {
+                // 注意：不要 std::move(frame)，否则下次 read(frame) 可能踩坑
+                auto msg = std::make_shared<const Msg>(std::move(msg_frame), ts);
                 output_channel_->publish(msg);
             }
 
-            // 统计耗时
             auto t1 = clock_t::now();
             double ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
             if (cfg_.PRINT_STATS) {
@@ -203,28 +193,26 @@ class DHLocalCam {
                 if ((int)cost_ms.size() >= cfg_.avg_frame_delay_num) {
                     double avg =
                         std::accumulate(cost_ms.begin(), cost_ms.end(), 0.0) / cost_ms.size();
-                    std::cout << "[DHLocalCam] avg " << cfg_.avg_frame_delay_num
+                    std::cout << "[LLocalCam] avg " << cfg_.avg_frame_delay_num
                               << " capture cost: " << avg << " ms\n";
                     cost_ms.clear();
                 }
             }
 
-            // 周期对齐
             next_tick += period;
             auto now = clock_t::now();
-            if (now < next_tick) {
+            if (now < next_tick)
                 std::this_thread::sleep_until(next_tick);
-            } else if (now - next_tick > period) {
+            else if (now - next_tick > period)
                 next_tick = now;
-            }
         }
     }
 
    private:
-    DHLocalCamConfig cfg_;
+    LLocalCamConfig cfg_;
     std::shared_ptr<MatChannel> output_channel_{};
 
-    Camera* camera_ = nullptr;
+    std::unique_ptr<DHCamera> camera_;  // 安全的生命周期管理
 
     std::atomic<bool> running_{false};
     std::thread th_worker_;

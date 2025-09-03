@@ -71,6 +71,7 @@ int main() {
 
     // 优雅退出模拟线程
     sim_running.store(false, std::memory_order_release);
+
     if (sim_thread_handle.joinable()) sim_thread_handle.join();
 
     return 0;

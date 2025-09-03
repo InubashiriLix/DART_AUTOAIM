@@ -115,6 +115,8 @@ sensor_msgs::msg::Image::ConstSharedPtr CameraPublisher::get_latest_iamge_msg() 
     return latest_img_;
 }
 
+double CameraPublisher::get_cam_trans_delay() { return camera->get_delay_double_ms(); }
+
 sensor_msgs::msg::CameraInfo CameraPublisher::get_camera_info_buf() { return _cam_info_buf; }
 
 CameraPublisher::~CameraPublisher() { stop(); }
@@ -138,23 +140,26 @@ void CameraPublisher::welcom() {
     _cam_log->info("sensor_width: {}", config.sensor_width);
     _cam_log->info("sensor_height: {}", config.sensor_height);
     _cam_log->info("FPS: {}", config.FPS);
+    _cam_log->info(
+        "frame_refresh_rate: how fast your node will get the newest frame from camera api: {}",
+        config.frame_refresh_rate);
+    _cam_log->info("avg_frame_delay_num: {}", config.avg_frame_delay_num);
     _cam_log->info("publish_image_msg: {}", config.publish_image_msg ? "true" : "false");
     _cam_log->info("publish_camera_info: {}", config.publish_camera_info ? "true" : "false");
     _cam_log->info("======== end for configs =========");
 }
 
 void CameraPublisher::worker_loop() {
+    // 因为camera api 中不支持信号notify，所以只能采用固定频率轮训，我真是操他妈了, 太丑陋了
+    int period_ms = 1000 / config.frame_refresh_rate - 1;
     using clock_t = std::chrono::steady_clock;
-    const auto period = std::chrono::milliseconds(8);  // = 100 Hz 上限
+    const auto period = std::chrono::milliseconds(period_ms);
 
     cv::Mat frame;
     std::vector<double> time_stamps;
     time_stamps.reserve(512);
 
     auto next_tick = clock_t::now();  // 首次基准
-
-    // 可选：减少积压（如果驱动支持，建议把缓冲设小）
-    // if (camera) { camera->set(cv::CAP_PROP_BUFFERSIZE, 1); }
 
     while (_running.load(std::memory_order_relaxed)) {
         auto start_tp_ros = this->now();
@@ -198,7 +203,7 @@ void CameraPublisher::worker_loop() {
         if (time_stamps.size() >= config.avg_frame_delay_num) {
             double sum = std::accumulate(time_stamps.begin(), time_stamps.end(), 0.0);
             double delay_avg = sum / time_stamps.size();
-            _cam_log->info("[frame camera] avg {} frame delay: {:.3f} ms",
+            _cam_log->info("[frame camera] avg {} process time: {:.3f} ms",
                            config.avg_frame_delay_num, delay_avg);
             time_stamps.clear();
         }

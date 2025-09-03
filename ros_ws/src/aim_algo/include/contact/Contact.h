@@ -11,15 +11,15 @@
 #include "contact/CommPort.h"
 #include "contact/Protocol.h"
 
+struct Target {
+    float pitch_deg = 0.f;  // 相对 pitch (rad)
+    float yaw_deg = 0.f;    // 相对 yaw   (rad)
+    float dist_m = 0.f;     // >0 表示有效
+    uint8_t shoot = 0;      // 0/1
+};
+
 class Contact {
    public:
-    struct Target {
-        float pitch_deg = 0.f;  // 相对 pitch (rad)
-        float yaw_deg = 0.f;    // 相对 yaw   (rad)
-        float dist_m = 0.f;     // >0 表示有效
-        uint8_t shoot = 0;      // 0/1
-    };
-
     // 控制回调：把“目标绝对角(度)”变成“最终下发绝对角(度)”
     // 输入: rx(当前姿态/角度, 度), yaw_target_deg, pitch_target_deg, dt(秒)
     // 输出: out_yaw_cmd_deg, out_pitch_cmd_deg（最终要下发的度数命令）
@@ -53,7 +53,7 @@ class Contact {
      *
      * @param t the Target&
      */
-    void update_target(const Target& t);
+    void update_target(const Target t);
 
     /**
      * @brief set the control callback function, if not set, then only wrap and clamp the target

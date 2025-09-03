@@ -5,9 +5,10 @@
 #define GMASTER_WM_NEW_CAMWRAPPER_H
 #include <opencv2/opencv.hpp>
 class Camera {
-public:
-    virtual bool init(int roi_x, int roi_y, int roi_w, int roi_h,
-                      float exposure, float gain, bool isEnergy, float FPS, int nBinning) = 0;
+   public:
+    virtual ~Camera();
+    virtual bool init(int roi_x, int roi_y, int roi_w, int roi_h, float exposure, float gain,
+                      bool isEnergy, float FPS, int nBinning) = 0;
 
     virtual void setParam(float exposure, float gain) = 0;
 
@@ -18,6 +19,8 @@ public:
     virtual bool init_is_successful() = 0;
 
     virtual bool read(cv::Mat &src) = 0;
+
+    virtual double get_delay_double_ms();
 };
 
-#endif //GMASTER_WM_NEW_CAMWRAPPER_H
+#endif  // GMASTER_WM_NEW_CAMWRAPPER_H

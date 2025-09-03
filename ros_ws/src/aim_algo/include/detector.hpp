@@ -20,7 +20,7 @@
 #include "config_parser.hpp"
 #include "contact/Contact.h"
 #include "contact/Protocol.h"
-#include "kalman/kalman_delay_aware.hpp"
+#include "kalman/kalman.hpp"
 #include "utils/Semaphore.hpp"
 #include "utils/logging.hpp"
 
@@ -47,7 +47,6 @@ class Detector : public rclcpp::Node {
     std::atomic<bool> _running{false};
     detector_config _config;
     double _center_x{}, _center_y{};
-    int _cam_qos_keep_last{};
     std::shared_ptr<CameraPublisher> _cam_node;
     void welcom();
     // camera info logger
@@ -75,11 +74,18 @@ class Detector : public rclcpp::Node {
     // logger
     std::shared_ptr<spdlog::logger> _kalman_log;
     // the kalman class
-    KalmanDelayAware _kf;
+    Kalman _kf;
     // the msg queue for kalman
-    Semaphore _sem_kalman_msg;  // Initial count 0
-    std::mutex _kalman_mgs_mutex;
-    std::queue<KalmanMsg> _kalman_msg_queue;
+    std::mutex _kf_msg_mtx;
+    KalmanMsg _kf_msg;                   // 最新融合消息（由两个线程共同填充）
+    std::atomic<uint64_t> _meas_seq{0};  // 自瞄量测序号（ detector 写，kf 读 ）
+    uint64_t _meas_seq_seen{0};          // kf 线程已消费到的序号
+    std::atomic<bool> _target_lost{true};
+
+    std::atomic<float> _lat_est_ms{25.f};  // dynamic vision latency estimate (ms)
+
+    std::atomic<int64_t> _preview_ms{40};  // 动态预瞄（外部可随时改）
+
     // the thread for kalman filter
     std::thread _th_kf;
     void kf_worker();

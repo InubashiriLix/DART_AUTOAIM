@@ -1,47 +1,39 @@
-[17:58:27.437] [info] CameraPublisher Node started.
-[17:58:27.437] [info] ============= configs ================
-[17:58:27.437] [info] SN: FGV22100004
-[17:58:27.437] [info] 
+[22:36:17.742] [info] CameraPublisher Node started.
+[22:36:17.742] [info] IS_ROTATE: true
+[22:36:17.742] [info] FOR_PC: true
+[22:36:17.742] [info] SHOW_IMG: false
+[22:36:17.742] [info] nBinning: 1
+[22:36:17.742] [info] MONITOR img GAIN: 30, 30, 30
+[22:36:17.742] [info] ============= configs ================
+[22:36:17.742] [info] SN: FGV22100004
+[22:36:17.743] [info] ROI_width: 1024
+[22:36:17.743] [info] ROI_height: 768
+[22:36:17.742] [info] 
 ░█▀▀░▀█▀░█▀█░█░░░█░░░█▀█░█░░░█▀▀░█▀█░█▄█░▀█░
 ░█░░░░█░░█▀█░█░░░█░░░█░█░▀░░░█░░░█▀█░█░█░░█░
 ░▀▀▀░▀▀▀░▀░▀░▀▀▀░▀▀▀░▀▀▀░▀░░░▀▀▀░▀░▀░▀░▀░▀▀▀
 
-[17:58:27.437] [info] SHOW_IMG: false
-[17:58:27.437] [info] nBinning: 1
-[17:58:27.437] [info] IS_ROTATE: true
-[17:58:27.437] [info] MONITOR img GAIN: 30, 30, 30
-[17:58:27.437] [info] FOR_PC: true
-[17:58:27.437] [info] ROI_width: 1024
-[17:58:27.437] [info] ROI_height: 768
-[17:58:27.437] [info] sensor_width: 1280
-[17:58:27.437] [info] sensor_height: 1024
-[17:58:27.437] [info] FPS: 60
-[17:58:27.437] [info] publish_image_msg: false
-[17:58:27.437] [info] publish_camera_info: true
-[17:58:27.437] [info] ======== end for configs =========
-[17:58:27.453] [info] [CameraGeometry]
-[17:58:27.453] [info]   rectified = false
-[17:58:27.453] [info]   image: 1024 x 768
-[17:58:27.453] [info] K =
+[22:36:17.743] [info] FPS: 60
+[22:36:17.743] [info] sensor_width: 1280
+[22:36:17.743] [info] frame_refresh_rate: how fast your node will get the newest frame from camera api: 100
+[22:36:17.743] [info] avg_frame_delay_num: 300
+[22:36:17.743] [info] sensor_height: 1024
+[22:36:17.743] [info] publish_image_msg: false
+[22:36:17.743] [info] publish_camera_info: true
+[22:36:17.743] [info] ======== end for configs =========
+[22:36:17.745] [info] [CameraGeometry]
+[22:36:17.745] [info]   rectified = false
+[22:36:17.745] [info]   image: 1024 x 768
+[22:36:17.745] [info] K =
 array([[1557.2, 0.2065, 510.985],
        [0, 1557.5, 386.338],
        [0, 0, 1]], dtype='float64')
-[17:58:27.453] [info] D =
+[22:36:17.745] [info] D =
 array([[-0.1295, 0.0804, 0.000485, 0.000637, 0.2375]], dtype='float64')
-[17:58:27.453] [info] R_cam2gimbal =
+[22:36:17.745] [info] R_cam2gimbal =
 array([[1, 0, 0],
        [0, 1, 0],
        [0, 0, 1]], dtype='float64')
-[17:58:29.843] [info] [frame camera] avg 300 frame delay: 1.716 ms
-[17:58:32.242] [info] [frame camera] avg 300 frame delay: 1.629 ms
-[17:58:34.641] [info] [frame camera] avg 300 frame delay: 1.805 ms
-[17:58:37.042] [info] [frame camera] avg 300 frame delay: 1.772 ms
-[17:58:39.442] [info] [frame camera] avg 300 frame delay: 1.788 ms
-[17:58:41.842] [info] [frame camera] avg 300 frame delay: 1.842 ms
-[17:58:44.242] [info] [frame camera] avg 300 frame delay: 1.705 ms
-[17:58:46.642] [info] [frame camera] avg 300 frame delay: 1.778 ms
-[17:58:49.041] [info] [frame camera] avg 300 frame delay: 1.663 ms
-[17:58:51.442] [info] [frame camera] avg 300 frame delay: 1.590 ms
-[17:58:53.842] [info] [frame camera] avg 300 frame delay: 1.735 ms
-[17:58:56.242] [info] [frame camera] avg 300 frame delay: 1.806 ms
-[17:58:58.643] [info] [frame camera] avg 300 frame delay: 1.767 ms
+[22:36:20.436] [info] [frame camera] avg 300 process time: 1.783 ms
+[22:36:23.136] [info] [frame camera] avg 300 process time: 1.722 ms
+[22:36:25.835] [info] [frame camera] avg 300 process time: 1.620 ms

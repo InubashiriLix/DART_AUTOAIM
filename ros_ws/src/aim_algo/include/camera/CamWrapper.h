@@ -6,6 +6,8 @@
 #include <opencv2/opencv.hpp>
 class Camera {
    public:
+    virtual ~Camera();
+
     virtual bool init(int roi_x, int roi_y, int roi_w, int roi_h, float exposure, float gain,
                       bool isEnergy, float FPS, int nBinning) = 0;
 

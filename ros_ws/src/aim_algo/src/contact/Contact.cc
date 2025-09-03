@@ -52,7 +52,7 @@ void Contact::stop() {
     comm_.stop();
 }
 
-void Contact::update_target(const Target t) {
+void Contact::update_target(const Target& t) {
     std::lock_guard<std::mutex> lk(tgt_mu_);
     tgt_ = t;
 }

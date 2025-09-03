@@ -166,9 +166,6 @@ void getRGBImage(DHCamera *cam) {
     }
 }
 
-Camera::~Camera() = default;
-double Camera::get_delay_double_ms() { return 0.0; }
-
 DHCamera::DHCamera(std::string sn)
     : sn(sn),
       thread_running(false),

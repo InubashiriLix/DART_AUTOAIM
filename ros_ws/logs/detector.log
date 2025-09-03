@@ -1,0 +1,68 @@
+[17:58:27.453] [info] welcom to detector
+[17:58:27.453] [info] 
+░▀█▀░█▀█░█░█░░░█▀▄░█▀▀░▀█▀░█▀▀░█▀▀░▀█▀░█▀█░█▀▄
+░░█░░█░█░█░█░░░█░█░█▀▀░░█░░█▀▀░█░░░░█░░█░█░█▀▄
+░▀▀▀░▀░▀░▀▀▀░░░▀▀░░▀▀▀░░▀░░▀▀▀░▀▀▀░░▀░░▀▀▀░▀░▀
+
+[17:58:27.453] [info] ============= configs ==============
+[17:58:27.453] [info] SHOW_CV_MONITOR: true
+[17:58:27.453] [info] CENTER_X: 612
+[17:58:27.453] [info] CENTER_Y: 384
+[17:58:27.453] [info] camera_qos_keep_last: 1
+[17:58:27.453] [info] SHOW_CV_CAL_DELAY: true
+[17:58:27.453] [info] avg_frame_delay_num: 300
+[17:58:27.453] [info] =========== configs end ============
+[17:58:27.462] [info] detector node thread start
+[17:58:28.218] [info] [frame detector] avg 300 frame delay: 2.436 ms
+[17:58:28.852] [info] [frame detector] avg 300 frame delay: 2.106 ms
+[17:58:29.443] [info] [frame detector] avg 300 frame delay: 1.962 ms
+[17:58:30.022] [info] [frame detector] avg 300 frame delay: 1.923 ms
+[17:58:30.603] [info] [frame detector] avg 300 frame delay: 1.931 ms
+[17:58:31.181] [info] [frame detector] avg 300 frame delay: 1.919 ms
+[17:58:31.765] [info] [frame detector] avg 300 frame delay: 1.941 ms
+[17:58:32.361] [info] [frame detector] avg 300 frame delay: 1.981 ms
+[17:58:32.987] [info] [frame detector] avg 300 frame delay: 2.078 ms
+[17:58:33.606] [info] [frame detector] avg 300 frame delay: 2.056 ms
+[17:58:34.214] [info] [frame detector] avg 300 frame delay: 2.019 ms
+[17:58:34.829] [info] [frame detector] avg 300 frame delay: 2.046 ms
+[17:58:35.468] [info] [frame detector] avg 300 frame delay: 2.122 ms
+[17:58:36.116] [info] [frame detector] avg 300 frame delay: 2.154 ms
+[17:58:36.760] [info] [frame detector] avg 300 frame delay: 2.139 ms
+[17:58:37.422] [info] [frame detector] avg 300 frame delay: 2.202 ms
+[17:58:38.123] [info] [frame detector] avg 300 frame delay: 2.329 ms
+[17:58:38.830] [info] [frame detector] avg 300 frame delay: 2.350 ms
+[17:58:39.490] [info] [frame detector] avg 300 frame delay: 2.193 ms
+[17:58:40.218] [info] [frame detector] avg 300 frame delay: 2.418 ms
+[17:58:40.916] [info] [frame detector] avg 300 frame delay: 2.319 ms
+[17:58:41.556] [info] [frame detector] avg 300 frame delay: 2.128 ms
+[17:58:42.201] [info] [frame detector] avg 300 frame delay: 2.143 ms
+[17:58:42.840] [info] [frame detector] avg 300 frame delay: 2.123 ms
+[17:58:43.475] [info] [frame detector] avg 300 frame delay: 2.113 ms
+[17:58:44.118] [info] [frame detector] avg 300 frame delay: 2.136 ms
+[17:58:44.761] [info] [frame detector] avg 300 frame delay: 2.137 ms
+[17:58:45.404] [info] [frame detector] avg 300 frame delay: 2.137 ms
+[17:58:46.053] [info] [frame detector] avg 300 frame delay: 2.154 ms
+[17:58:46.692] [info] [frame detector] avg 300 frame delay: 2.125 ms
+[17:58:47.303] [info] [frame detector] avg 300 frame delay: 2.029 ms
+[17:58:47.911] [info] [frame detector] avg 300 frame delay: 2.022 ms
+[17:58:48.507] [info] [frame detector] avg 300 frame delay: 1.980 ms
+[17:58:49.106] [info] [frame detector] avg 300 frame delay: 1.989 ms
+[17:58:49.700] [info] [frame detector] avg 300 frame delay: 1.973 ms
+[17:58:50.291] [info] [frame detector] avg 300 frame delay: 1.963 ms
+[17:58:50.884] [info] [frame detector] avg 300 frame delay: 1.971 ms
+[17:58:51.479] [info] [frame detector] avg 300 frame delay: 1.978 ms
+[17:58:52.081] [info] [frame detector] avg 300 frame delay: 2.000 ms
+[17:58:52.696] [info] [frame detector] avg 300 frame delay: 2.045 ms
+[17:58:53.339] [info] [frame detector] avg 300 frame delay: 2.137 ms
+[17:58:53.976] [info] [frame detector] avg 300 frame delay: 2.119 ms
+[17:58:54.611] [info] [frame detector] avg 300 frame delay: 2.110 ms
+[17:58:55.241] [info] [frame detector] avg 300 frame delay: 2.091 ms
+[17:58:55.871] [info] [frame detector] avg 300 frame delay: 2.097 ms
+[17:58:56.496] [info] [frame detector] avg 300 frame delay: 2.076 ms
+[17:58:57.112] [info] [frame detector] avg 300 frame delay: 2.045 ms
+[17:58:57.729] [info] [frame detector] avg 300 frame delay: 2.049 ms
+[17:58:58.344] [info] [frame detector] avg 300 frame delay: 2.046 ms
+[17:58:58.965] [info] [frame detector] avg 300 frame delay: 2.063 ms
+[17:58:59.577] [info] [frame detector] avg 300 frame delay: 2.033 ms
+[17:59:00.171] [info] [frame detector] avg 300 frame delay: 1.971 ms
+[17:59:00.802] [info] [frame detector] avg 300 frame delay: 2.096 ms

@@ -1,355 +1,260 @@
-#include "kalman/kalman.hpp"
-
-#include <spdlog/spdlog.h>
-
-#include <algorithm>
 #include <cmath>
+#include <iomanip>
+#include <iostream>
 
-#ifndef KALMAN_NO_TOML
-#include <toml.hpp>
-#endif
+#include "kalman/kalman_delay_aware.hpp"
 
-using Mat2 = Kalman::Mat2;
-using Mat24 = Kalman::Mat24;
-using Mat42 = Kalman::Mat42;
-using Mat44 = Kalman::Mat44;
-using Vec2 = Kalman::Vec2;
-using Vec4 = Kalman::Vec4;
-
-static inline float sqr(float v) { return v * v; }
-static inline float deg2rad(float d) { return d * float(M_PI / 180.0); }
-static inline float rad2deg(float r) { return r * float(180.0 / M_PI); }
-
-float Kalman::wrap180(float a) {
-    while (a > 180.f) a -= 360.f;
-    while (a < -180.f) a += 360.f;
-    return a;
-}
-
-Kalman::Kalman() { reset(); }
-
-void Kalman::reset() {
-    x_.setZero();
-    P_.setZero();
-    // 初值不确定性（保守一点）
-    P_(0, 0) = P_(1, 1) = 36.f;   // deg^2
-    P_(2, 2) = P_(3, 3) = 144.f;  // (deg/s)^2
-
-    last_now_ms_ = 0;
-    last_gimbal_pitch_ = 0.f;
-    last_gimbal_yaw_ = 0.f;
-    last_gimbal_wp_ = 0.f;
-    last_gimbal_wy_ = 0.f;
-    last_gimbal_ap_ = 0.f;
-    last_gimbal_ay_ = 0.f;
-}
-
-void Kalman::setProcessSigmaA(float sp, float sy) {
-    sigma_a_pitch_deg_s2_ = std::max(1e-6f, sp);
-    sigma_a_yaw_deg_s2_ = std::max(1e-6f, sy);
-}
-
-void Kalman::setMeasurementR(float rp, float ry) {
-    r_pitch_deg2_ = std::max(1e-6f, rp);
-    r_yaw_deg2_ = std::max(1e-6f, ry);
-}
-
-bool Kalman::loadFromToml(const std::string& toml_path, const std::string& table) {
-#ifdef KALMAN_NO_TOML
-    (void)toml_path;
-    (void)table;
-    return false;
-#else
+bool KalmanDelayAware::loadFromToml(const std::string& toml_path, const std::string& table) {
     try {
         auto cfg = toml::parse_file(toml_path);
-        const auto* t = cfg[table].as_table();
-        if (!t) return false;
 
-        if (auto* proc = (*t)["process"].as_table()) {
-            setProcessSigmaA(
-                float((*proc)["sigma_a_pitch_deg_s2"].value_or(double(sigma_a_pitch_deg_s2_))),
-                float((*proc)["sigma_a_yaw_deg_s2"].value_or(double(sigma_a_yaw_deg_s2_))));
+        // 支持 [kalman] 或者你传的 table 名
+        const auto* tkal = cfg[table].as_table();
+        if (!tkal) {
+            std::cerr << "[Kalman] Missing table [" << table << "] in " << toml_path << "\n";
+            return false;
         }
-        if (auto* meas = (*t)["measurement"].as_table()) {
-            setMeasurementR(float((*meas)["r_pitch"].value_or(double(r_pitch_deg2_))),
-                            float((*meas)["r_yaw"].value_or(double(r_yaw_deg2_))));
+
+        // ---- output block [kalman.output] ----
+        if (auto* out = (*tkal)["output"].as_table()) {
+            kp_ = float((*out)["kp"].value_or(double(kp_)));
+            kv_ = float((*out)["kv"].value_or(double(kv_)));
+            preview_ms_ = float((*out)["preview_ms"].value_or(double(preview_ms_)));
+            deadband_deg_ = float((*out)["deadband_deg"].value_or(double(deadband_deg_)));
+            max_step_deg_ = float((*out)["max_step_deg"].value_or(double(max_step_deg_)));
+        } else {
+            // 也允许直接平铺
+            kp_ = float((*tkal)["kp"].value_or(double(kp_)));
+            kv_ = float((*tkal)["kv"].value_or(double(kv_)));
+            preview_ms_ = float((*tkal)["preview_ms"].value_or(double(preview_ms_)));
+            deadband_deg_ = float((*tkal)["deadband_deg"].value_or(double(deadband_deg_)));
+            max_step_deg_ = float((*tkal)["max_step_deg"].value_or(double(max_step_deg_)));
+        }
+
+        // ---- process block [kalman.process] ----
+        if (auto* proc = (*tkal)["process"].as_table()) {
+            sigma_a_pitch_ = float((*proc)["sigma_a_pitch"].value_or(double(sigma_a_pitch_)));
+            sigma_a_yaw_ = float((*proc)["sigma_a_yaw"].value_or(double(sigma_a_yaw_)));
+            p0_angle_ = float((*proc)["p0_angle"].value_or(double(p0_angle_)));
+            p0_rate_ = float((*proc)["p0_rate"].value_or(double(p0_rate_)));
+        } else {
+            sigma_a_pitch_ = float((*tkal)["sigma_a_pitch"].value_or(double(sigma_a_pitch_)));
+            sigma_a_yaw_ = float((*tkal)["sigma_a_yaw"].value_or(double(sigma_a_yaw_)));
+            p0_angle_ = float((*tkal)["p0_angle"].value_or(double(p0_angle_)));
+            p0_rate_ = float((*tkal)["p0_rate"].value_or(double(p0_rate_)));
+        }
+
+        // ---- measurement block [kalman.measurement] ----
+        if (auto* meas = (*tkal)["measurement"].as_table()) {
+            r_pitch_ = float((*meas)["r_pitch"].value_or(double(r_pitch_)));
+            r_yaw_ = float((*meas)["r_yaw"].value_or(double(r_yaw_)));
             chi2_gate_ = float((*meas)["chi2_gate"].value_or(double(chi2_gate_)));
+        } else {
+            r_pitch_ = float((*tkal)["r_pitch"].value_or(double(r_pitch_)));
+            r_yaw_ = float((*tkal)["r_yaw"].value_or(double(r_yaw_)));
+            chi2_gate_ = float((*tkal)["chi2_gate"].value_or(double(chi2_gate_)));
         }
-        if (auto* tim = (*t)["timing"].as_table()) {
+
+        // ---- timing block [kalman.timing] ----
+        if (auto* tim = (*tkal)["timing"].as_table()) {
             vision_latency_ms_ =
                 float((*tim)["vision_latency_ms"].value_or(double(vision_latency_ms_)));
-            max_meas_age_ms_ = float((*tim)["max_meas_age_ms"].value_or(double(max_meas_age_ms_)));
-            future_slop_ms_ = float((*tim)["future_slop_ms"].value_or(double(future_slop_ms_)));
-        }
-        if (auto* rob = (*t)["robust"].as_table()) {
-            jitter_var_gain_deg2_per_s2_ = float((*rob)["jitter_var_gain_deg2_per_s2"].value_or(
-                double(jitter_var_gain_deg2_per_s2_)));
+        } else {
+            vision_latency_ms_ =
+                float((*tkal)["vision_latency_ms"].value_or(double(vision_latency_ms_)));
         }
 
-        // 保护
-        setVisionLatencyMs(vision_latency_ms_);
-        setMaxMeasAgeMs(max_meas_age_ms_);
-        setFutureSlopMs(future_slop_ms_);
-        setJitterVarGain(jitter_var_gain_deg2_per_s2_);
+        // 合法性
+        preview_ms_ = std::max(0.0f, preview_ms_);
+        deadband_deg_ = std::max(0.0f, deadband_deg_);
+        max_step_deg_ = std::max(0.0f, max_step_deg_);
+        r_pitch_ = std::max(1e-6f, r_pitch_);
+        r_yaw_ = std::max(1e-6f, r_yaw_);
+        sigma_a_pitch_ = std::max(1e-6f, sigma_a_pitch_);
+        sigma_a_yaw_ = std::max(1e-6f, sigma_a_yaw_);
 
-        // 不改变 P_ 的设定（reset 时已置好）
+        // 重新设定初值协方差
+        P_.setZero();
+        P_(0, 0) = P_(1, 1) = p0_angle_;
+        P_(2, 2) = P_(3, 3) = p0_rate_;
+
         return true;
-    } catch (const std::exception&) {
+    } catch (const std::exception& e) {
+        std::cerr << "[Kalman] loadFromToml error: " << e.what() << "\n";
         return false;
     }
-#endif
 }
 
-// —— 用云台加速度作为控制输入，推进到“现在” ——
-void Kalman::predictWithGimbal_(float dt, float ap, float ay) {
-    if (dt <= 0.f) return;
+void KalmanDelayAware::reset() {
+    x_.setZero();
+    P_.setZero();
+    P_(0, 0) = P_(1, 1) = p0_angle_;
+    P_(2, 2) = P_(3, 3) = p0_rate_;
+    last_ts_ms_ = 0;
+    last_delta_pitch_ = last_delta_yaw_ = 0.0f;
+}
 
-    Mat44 F = Mat44::Identity();
+void KalmanDelayAware::predictTo(std::int64_t ts_ms) {
+    if (last_ts_ms_ == 0) {
+        last_ts_ms_ = ts_ms;
+        return;
+    }
+    float dt = float(ts_ms - last_ts_ms_) * 1e-3f;
+    if (dt <= 0.0f) return;
+    last_ts_ms_ = ts_ms;
+
+    // x_k+1 = F x_k
+    Eigen::Matrix<float, 4, 4> F = Eigen::Matrix<float, 4, 4>::Identity();
     F(0, 2) = dt;
     F(1, 3) = dt;
 
-    // 控制输入：u = [-a_gimbal_pitch, -a_gimbal_yaw]
-    Mat42 B = Mat42::Zero();
-    B(0, 0) = 0.5f * dt * dt;
-    B(2, 0) = dt;
-    B(1, 1) = 0.5f * dt * dt;
-    B(3, 1) = dt;
+    // Q 离散化（白噪声加速度到速度/角度）
+    const float dt2 = dt * dt;
+    const float dt3 = dt2 * dt;
+    const float dt4 = dt2 * dt2;
+    const float sP = sigma_a_pitch_ * sigma_a_pitch_;
+    const float sY = sigma_a_yaw_ * sigma_a_yaw_;
 
-    Eigen::Matrix<float, 2, 1> u;
-    u << -ap, -ay;
-
-    const float dt2 = dt * dt, dt3 = dt2 * dt, dt4 = dt2 * dt2;
-    const float sP2 = sqr(sigma_a_pitch_deg_s2_);
-    const float sY2 = sqr(sigma_a_yaw_deg_s2_);
-
-    Mat44 Q = Mat44::Zero();
-    Q(0, 0) = 0.25f * dt4 * sP2;
-    Q(0, 2) = 0.5f * dt3 * sP2;
+    Eigen::Matrix<float, 4, 4> Q = Eigen::Matrix<float, 4, 4>::Zero();
+    // pitch 2x2
+    Q(0, 0) = 0.25f * dt4 * sP;
+    Q(0, 2) = 0.5f * dt3 * sP;
     Q(2, 0) = Q(0, 2);
-    Q(2, 2) = dt2 * sP2;
-    Q(1, 1) = 0.25f * dt4 * sY2;
-    Q(1, 3) = 0.5f * dt3 * sY2;
+    Q(2, 2) = dt * sP;
+    // yaw 2x2
+    Q(1, 1) = 0.25f * dt4 * sY;
+    Q(1, 3) = 0.5f * dt3 * sY;
     Q(3, 1) = Q(1, 3);
-    Q(3, 3) = dt2 * sY2;
+    Q(3, 3) = dt * sY;
 
-    x_ = F * x_ + B * u;
+    x_ = F * x_;
     P_ = F * P_ * F.transpose() + Q;
 }
 
-void Kalman::predictForwardVirtual_(float dt, Vec4& x_out, Mat44& P_out, float ap, float ay) const {
-    if (dt <= 0.f) {
-        x_out = x_;
-        P_out = P_;
-        return;
-    }
+void KalmanDelayAware::updateAngles(float meas_pitch_deg, float meas_yaw_deg,
+                                    std::int64_t meas_ts_ms) {
+    // 视觉延迟：观测对应真实时刻 = meas_ts_ms + latency
+    const std::int64_t fused_meas_ts = meas_ts_ms + static_cast<std::int64_t>(vision_latency_ms_);
+    predictTo(fused_meas_ts);
 
-    Mat44 F = Mat44::Identity();
-    F(0, 2) = dt;
-    F(1, 3) = dt;
+    // 量测：z=[pitch, yaw]
+    Eigen::Matrix<float, 2, 1> z;
+    z << meas_pitch_deg, meas_yaw_deg;
 
-    Mat42 B = Mat42::Zero();
-    B(0, 0) = 0.5f * dt * dt;
-    B(2, 0) = dt;
-    B(1, 1) = 0.5f * dt * dt;
-    B(3, 1) = dt;
+    // H（2x4）
+    Eigen::Matrix<float, 2, 4> H = Eigen::Matrix<float, 2, 4>::Zero();
+    H(0, 0) = 1.0f;  // pitch
+    H(1, 1) = 1.0f;  // yaw
 
-    Eigen::Matrix<float, 2, 1> u;
-    u << -ap, -ay;
+    // R
+    Eigen::Matrix<float, 2, 2> R = Eigen::Matrix<float, 2, 2>::Zero();
+    R(0, 0) = r_pitch_;
+    R(1, 1) = r_yaw_;
 
-    const float dt2 = dt * dt, dt3 = dt2 * dt, dt4 = dt2 * dt2;
-    const float sP2 = sqr(sigma_a_pitch_deg_s2_);
-    const float sY2 = sqr(sigma_a_yaw_deg_s2_);
+    // 创新 y、协方差 S
+    Eigen::Matrix<float, 2, 1> y = z - H * x_;
+    Eigen::Matrix<float, 2, 2> S = H * P_ * H.transpose() + R;
 
-    Mat44 Q = Mat44::Zero();
-    Q(0, 0) = 0.25f * dt4 * sP2;
-    Q(0, 2) = 0.5f * dt3 * sP2;
-    Q(2, 0) = Q(0, 2);
-    Q(2, 2) = dt2 * sP2;
-    Q(1, 1) = 0.25f * dt4 * sY2;
-    Q(1, 3) = 0.5f * dt3 * sY2;
-    Q(3, 1) = Q(1, 3);
-    Q(3, 3) = dt2 * sY2;
-
-    x_out = F * x_ + B * u;
-    P_out = F * P_ * F.transpose() + Q;
-}
-
-// —— 在“现在”做一次观测更新（角度量测→相对量；陈旧量测膨胀 R 或丢弃） ——
-void Kalman::updateNow_(const KalmanMsg& msg) {
-    // fused measurement time
-    std::int64_t fused_ms = msg.img_target_time_stamp + (std::int64_t)vision_latency_ms_;
-    // 容忍少许“未来”，过多则夹回现在
-    if (fused_ms > last_now_ms_ + (std::int64_t)future_slop_ms_) {
-        fused_ms = last_now_ms_;
-    }
-    // 陈旧性评估
-    float age_ms = float(last_now_ms_ - fused_ms);
-
-    if (age_ms > max_meas_age_ms_) {
-        // 太陈旧，直接丢弃
-        return;
-    }
-    if (age_ms < 0.f) age_ms = 0.f;  // 负值视为 0
-
-    // 把“绝对角”量测转成“相对角”（以现在的云台角为基准）
-    float z_pitch_rel = wrap180(msg.y - msg.pitch_angle);
-    float z_yaw_rel = wrap180(msg.x - msg.yaw_angle);
-
-    // H（仅观测到相对角，不观测相对角速度）
-    Mat24 H = Mat24::Zero();
-    H(0, 0) = 1.f;
-    H(1, 1) = 1.f;
-
-    // R 膨胀：R_eff = R + age_s^2 * gain
-    float age_s = age_ms * 1e-3f;
-    Mat2 R = Mat2::Zero();
-    R(0, 0) = r_pitch_deg2_ + sqr(age_s) * jitter_var_gain_deg2_per_s2_;
-    R(1, 1) = r_yaw_deg2_ + sqr(age_s) * jitter_var_gain_deg2_per_s2_;
-
-    Vec2 z;
-    z << z_pitch_rel, z_yaw_rel;
-    Vec2 y = z - H * x_;
-    Mat2 S = H * P_ * H.transpose() + R;
-
-    Eigen::LLT<Mat2> llt(S);
+    // 用 LLT（更稳）来做求解
+    Eigen::LLT<Eigen::Matrix<float, 2, 2>> llt(S);
     if (llt.info() != Eigen::Success) {
-        Mat2 S_inv = S.inverse();
-        Mat42 K = P_ * H.transpose() * S_inv;
+        // 极少数数值问题，退化为显式逆（仍然保护）
+        // 注意：这里只是 fallback，正常不会走到
+        Eigen::Matrix<float, 2, 2> S_inv = S.inverse();
+        Eigen::Matrix<float, 4, 2> K = P_ * H.transpose() * S_inv;
         x_ = x_ + K * y;
-        Mat44 I = Mat44::Identity();
+        Eigen::Matrix<float, 4, 4> I = Eigen::Matrix<float, 4, 4>::Identity();
         P_ = (I - K * H) * P_;
         return;
     }
 
-    if (chi2_gate_ > 0.f) {
+    // 卡方门限（可选）
+    if (chi2_gate_ > 0.0f) {
         float nis = (y.transpose() * llt.solve(y))(0, 0);
         if (nis > chi2_gate_) {
-            // 离群，丢弃本次更新
+            // 丢弃本次更新，只保留预测
             return;
         }
     }
 
-    Mat42 PHT = P_ * H.transpose();
-    Mat24 X = llt.solve(PHT.transpose());
-    Mat42 K = X.transpose();
+    // K = P H^T S^{-1}  -> 先算 PHT，再用 LLT 解线性方程替代求逆
+    Eigen::Matrix<float, 4, 2> PHT = P_ * H.transpose();
+    // 解 S * X = PHT^T，得到 X = S^{-1} * PHT^T
+    Eigen::Matrix<float, 2, 4> X = llt.solve(PHT.transpose());
+    Eigen::Matrix<float, 4, 2> K = X.transpose();
 
+    // 更新
     x_ = x_ + K * y;
-    Mat44 I = Mat44::Identity();
+    Eigen::Matrix<float, 4, 4> I = Eigen::Matrix<float, 4, 4>::Identity();
     P_ = (I - K * H) * P_;
 }
 
-// —— 主循环入口 ——
-// 每 tick 都会调用：先用云台输入前推到“现在”，若 has_measurement 再做一次更新
-void Kalman::step(const KalmanMsg& msg, bool has_measurement) {
-    const std::int64_t now_ms = msg.lower_machine_time_stamp;
-    if (now_ms <= 0) return;
+std::pair<float, float> KalmanDelayAware::getDeltaAnglesPD(float gimbal_pitch_deg,
+                                                           float gimbal_yaw_deg) const {
+    const float preview_s = preview_ms_ * 1e-3f;
 
-    if (last_now_ms_ == 0) {
-        last_now_ms_ = now_ms;
-        last_gimbal_pitch_ = msg.pitch_angle;
-        last_gimbal_yaw_ = msg.yaw_angle;
-        last_gimbal_wp_ = last_gimbal_wy_ = 0.f;
-        last_gimbal_ap_ = last_gimbal_ay_ = 0.f;
-        last_rx_seq_ = msg.rx_seq;  // ← 记住起始 seq
-        return;
-    }
+    const float pitch_preview = x_(0) + x_(2) * preview_s;
+    const float yaw_preview = x_(1) + x_(3) * preview_s;
 
-    float dt = float(now_ms - last_now_ms_) * 1e-3f;
-    if (dt <= 0.f) return;
+    float dp = kp_ * (pitch_preview - gimbal_pitch_deg) + kv_ * x_(2);
+    float dy = kp_ * (yaw_preview - gimbal_yaw_deg) + kv_ * x_(3);
 
-    const bool has_new_rx = (msg.rx_seq != last_rx_seq_);
+    dp = deadband(dp, deadband_deg_);
+    dy = deadband(dy, deadband_deg_);
 
-    float wp, wy, ap, ay;
-    if (has_new_rx) {
-        float d_pitch = angDiff(msg.pitch_angle, last_gimbal_pitch_);
-        float d_yaw = angDiff(msg.yaw_angle, last_gimbal_yaw_);
-        wp = d_pitch / dt;
-        wy = d_yaw / dt;
-        ap = (wp - last_gimbal_wp_) / dt;
-        ay = (wy - last_gimbal_wy_) / dt;
-    } else {
-        // 没有新 RX：保守处理（两种任选一种或结合）
-        wp = last_gimbal_wp_;
-        wy = last_gimbal_wy_;
-        ap = 0.f;
-        ay = 0.f;  // 控制输入置 0，避免低通持续拉平
-        // 或者在 predictWithGimbal_ 里通过缩放 sigma_a_* 来减小 Q
-    }
+    dp = clampf(dp, -max_step_deg_, max_step_deg_);
+    dy = clampf(dy, -max_step_deg_, max_step_deg_);
 
-    predictWithGimbal_(dt, ap, ay);
-    last_now_ms_ = now_ms;
-
-    if (has_new_rx) {
-        last_gimbal_pitch_ = msg.pitch_angle;
-        last_gimbal_yaw_ = msg.yaw_angle;
-        last_gimbal_wp_ = wp;
-        last_gimbal_wy_ = wy;
-        const float a_alpha = 0.5f;
-        last_gimbal_ap_ = (1.f - a_alpha) * last_gimbal_ap_ + a_alpha * ap;
-        last_gimbal_ay_ = (1.f - a_alpha) * last_gimbal_ay_ + a_alpha * ay;
-        last_rx_seq_ = msg.rx_seq;  // ← 只在有新 RX 时推进
-    }
-    // 若没有新 RX，也可以选择不动这些缓存，保持上一帧的“已知最好值”
-
-    if (has_measurement) {
-        updateNow_(msg);
-    }
+    last_delta_pitch_ = dp;
+    last_delta_yaw_ = dy;
+    return {dp, dy};
 }
 
-std::pair<float, float> Kalman::predictDeltaAt(const KalmanMsg& msg,
-                                               std::int64_t horizon_ms) const {
-    float dt = (horizon_ms <= 0 ? 0.f : float(horizon_ms) * 1e-3f);
-    Vec4 xp;
-    Mat44 Pp;
-    // 使用最近估计的云台加速度做虚拟预测（无副作用）
-    predictForwardVirtual_(dt, xp, Pp, last_gimbal_ap_, last_gimbal_ay_);
-    // 相对角即为“需要再加多少”
-    return {xp(0), xp(1)};
-}
+bool KalmanDelayAware::welcom(const std::string& toml_path, const std::string& table,
+                              std::shared_ptr<spdlog::logger> logger) {
+    if (!logger) {
+        logger = perflog::get("kalman");
+    }
 
-void Kalman::getState(float& pr, float& yr, float& wpr, float& wyr) const {
-    pr = x_(0);
-    yr = x_(1);
-    wpr = x_(2);
-    wyr = x_(3);
-}
+    bool ok = loadFromToml(toml_path, table);
 
-void Kalman::logParams_(std::shared_ptr<spdlog::logger> logger) const {
-    if (!logger) return;
+    logger->info("welcom to KalmanDelayAware");
     logger->info(
         "\n"
         "░█▀▄░█▀▀░█░░░█▀█░█░█░░░█░█░█▀█░█░░░█▄█░█▀█░█▀█\n"
         "░█░█░█▀▀░█░░░█▀█░░█░░░░█▀▄░█▀█░█░░░█░█░█▀█░█░█\n"
         "░▀▀░░▀▀▀░▀▀▀░▀░▀░░▀░░░░▀░▀░▀░▀░▀▀▀░▀░▀░▀░▀░▀░▀\n");
-    logger->info("============= kalman(rel) params =============");
-    logger->info("[process] sigma_a_pitch={} deg/s^2, sigma_a_yaw={} deg/s^2",
-                 sigma_a_pitch_deg_s2_, sigma_a_yaw_deg_s2_);
-    logger->info("[measurement] R_pitch={} deg^2, R_yaw={} deg^2, chi2_gate={}", r_pitch_deg2_,
-                 r_yaw_deg2_, chi2_gate_);
-    logger->info("[timing] vision_latency_ms={}, max_meas_age_ms={}, future_slop_ms={}",
-                 vision_latency_ms_, max_meas_age_ms_, future_slop_ms_);
-    logger->info("[robust] jitter_var_gain_deg2_per_s2={}", jitter_var_gain_deg2_per_s2_);
-    logger->info("==============================================");
-}
-
-bool Kalman::welcom(const std::string& toml_path, const std::string& table,
-                    std::shared_ptr<spdlog::logger> logger) {
-    if (!logger) {
-        logger = spdlog::get("kalman");
-        if (!logger) logger = spdlog::default_logger();
-    }
-    bool ok = loadFromToml(toml_path, table);
-    logger->info("welcom to Kalman");
-    logger->info("{} load config from: {} [{}]", (ok ? "[OK]" : "[ERR]"), toml_path, table);
-    logParams_(logger);
+    logger->info("{} load config from: {} [{}]", (ok ? "[OK] " : "[ERR] "), toml_path, table);
+    logger->info("============= kalman params =============");
+    // logger->info("val={:.3f}", val);
+    // logger->info("vec=({}, {}, {})", x, y, z);
+    logger->info("[output]  kp={}, kv={}, preview_ms={}, deadband_deg={}, max_step_deg={}", kp_,
+                 kv_, preview_ms_, deadband_deg_, max_step_deg_);
+    logger->info("[process]  sigma_a_pitch={}, sigma_a_yaw={}, p0_angle={}, p0_rate={}",
+                 sigma_a_pitch_, sigma_a_yaw_, p0_angle_, p0_rate_);
+    logger->info("[measurement]  r_pitch={}, r_yaw={}, chi2_gate={}", r_pitch_, r_yaw_, chi2_gate_);
+    logger->info("[timing]  vision_latency_ms={}", vision_latency_ms_);
+    logger->info("=========================================");
     return ok;
 }
 
-void Kalman::welcom(std::shared_ptr<spdlog::logger> logger) const {
+void KalmanDelayAware::welcom(std::shared_ptr<spdlog::logger> logger) const {
     if (!logger) {
-        logger = spdlog::get("kalman");
-        if (!logger) logger = spdlog::default_logger();
+        logger = perflog::get("kalman");
     }
-    logger->info("welcom to Kalman");
-    logParams_(logger);
+
+    logger->info("welcom to KalmanDelayAware");
+    logger->info(
+        "\n"
+        "░█▀▄░█▀▀░█░░░█▀█░█░█░░░█░█░█▀█░█░░░█▄█░█▀█░█▀█\n"
+        "░█░█░█▀▀░█░░░█▀█░░█░░░░█▀▄░█▀█░█░░░█░█░█▀█░█░█\n"
+        "░▀▀░░▀▀▀░▀▀▀░▀░▀░░▀░░░░▀░▀░▀░▀░▀▀▀░▀░▀░▀░▀░▀░▀\n");
+    logger->info("============= kalman params =============");
+    logger->info("[output]  kp={}, kv={}, preview_ms={}, deadband_deg={}, max_step_deg={}", kp_,
+                 kv_, preview_ms_, deadband_deg_, max_step_deg_);
+    logger->info("[process]  sigma_a_pitch={}, sigma_a_yaw={}, p0_angle={}, p0_rate={}",
+                 sigma_a_pitch_, sigma_a_yaw_, p0_angle_, p0_rate_);
+    logger->info("[measurement]  r_pitch={}, r_yaw={}, chi2_gate={}", r_pitch_, r_yaw_, chi2_gate_);
+    logger->info("[timing]  vision_latency_ms={}", vision_latency_ms_);
+    logger->info("=========================================");
 }

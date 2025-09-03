@@ -13,14 +13,6 @@ struct ProjectileRx {
     uint8_t shoot_decision;
     float bullet_spped;
     uint8_t EOF_;  // 0xAA for InfantryDL // EOF_ not EOF (variable name)
-    //
-    bool operator==(const ProjectileRx& other) const {
-        return header == other.header && roll == other.roll && pitch == other.pitch &&
-               yaw == other.yaw && q[0] == other.q[0] && q[1] == other.q[1] && q[2] == other.q[2] &&
-               q[3] == other.q[3] && color == other.color && auto_aim_mode == other.auto_aim_mode &&
-               shoot_decision == other.shoot_decision && bullet_spped == other.bullet_spped &&
-               EOF_ == other.EOF_;
-    }
 } __attribute__((packed));
 
 struct ProjectileTx {
